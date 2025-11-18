@@ -1,0 +1,28 @@
+lib/
+├── main.dart                  # アプリのエントリーポイント（起動設定）
+├── config/                    # 設定関連
+│   ├── theme.dart             # アプリのテーマや色の定義
+│   └── routes.dart            # 画面遷移のルート定義
+├── models/                    # データの「型」定義 (Isarスキーマ)
+│   └── password_entry.dart    # パスワードエントリのデータモデル
+├── services/                  # ロジックの「実行部」 (コアビジネスロジック)
+│   ├── database_service.dart  # IsarデータベースのCRUD操作
+│   ├── encryption_service.dart# AES暗号化・復号ロジック
+│   ├── key_derivation_service.dart # PBKDF2鍵導出ロジック
+│   └── auth_service.dart      # マスターパスワード検証・SecureStorage操作
+├── providers/                 # 状態管理 (Riverpod/Provider)
+│   ├── password_provider.dart # パスワード一覧とCRUD操作の状態管理
+│   └── auth_provider.dart     # ログイン状態と認証サービス管理
+├── screens/                   # 画面 (UI層)
+│   ├── auth/                  # 認証関連画面
+│   │   ├── login_screen.dart  # ロック解除/ログイン画面
+│   │   └── setup_screen.dart  # 初回マスターパスワード設定画面
+│   ├── home/                  # メイン画面
+│   │   └── home_screen.dart   # パスワード一覧表示画面
+│   ├── entry/                 # 登録・編集画面
+│   │   └── edit_screen.dart   # パスワードの追加/編集フォーム
+│   └── settings/              # 設定画面
+│       └── settings_screen.dart # アプリのリセットやクイック認証設定
+└── widgets/                   # 再利用可能なUIコンポーネント
+    ├── password_tile.dart     # `HomeScreen`で使うパスワード表示タイル
+    └── copy_button.dart       # クリップボードコピーボタンなど
