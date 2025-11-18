@@ -1,10 +1,8 @@
 ----------------------------password_entry.dart----------------------------
 
-// lib/models/password_entry.dart
+import 'package:flutter/foundation.dart';
 
-import 'package:flutter/foundation.dart'; // @required の代わりに required を使用
-
-@immutable // このクラスが不変であることを明示的に示す
+@immutable
 class PasswordEntry {
   final String id;
   final String serviceName;
@@ -12,7 +10,6 @@ class PasswordEntry {
   final String password;
   final DateTime createdAt;
 
-  // constコンストラクタで、フィールドがfinalであることを保証
   const PasswordEntry({
     required this.id,
     required this.serviceName,
@@ -21,11 +18,6 @@ class PasswordEntry {
     required this.createdAt,
   });
 
-  // ==========================================================
-  // ユーティリティメソッド
-  // ==========================================================
-
-  // 特定のフィールドだけを更新するためのコピーメソッド
   PasswordEntry copyWith({
     String? id,
     String? serviceName,
@@ -42,7 +34,6 @@ class PasswordEntry {
     );
   }
 
-  // デバッグや比較のために toString() と equals/hashCode を実装することも一般的
   @override
   String toString() {
     return 'PasswordEntry(serviceName: $serviceName, username: $username)';
