@@ -1,0 +1,13 @@
+/p0_prototype_app
+├── lib/
+│   ├── main.dart             # アプリのエントリーポイント
+│   ├── models/
+│   │   └── password_entry.dart # パスワードデータの「型」定義（メモリ用クラス）
+│   ├── services/
+│   │   └── generator.dart      # パスワード生成のロジック
+│   ├── providers/
+│   │   └── password_provider.dart # 状態管理（メモリリストのCRUD操作）
+│   └── screens/
+│       ├── generate_screen.dart  # パスワード生成機能と一覧表示を兼ねるメイン画面
+│       └── edit_screen.dart      # 新規作成（手動入力）と編集を兼ねる画面
+└── pubspec.yaml              # 依存パッケージの定義（flutter_riverpodのみ）
