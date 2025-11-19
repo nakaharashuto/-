@@ -1,4 +1,4 @@
-----------------------------password_entry.dart----------------------------
+----------------------------models\password_entry.dart----------------------------
 
 import 'package:flutter/foundation.dart';
 
@@ -41,7 +41,7 @@ class PasswordEntry {
 }
 
 
-----------------------------master_pin_provider.dart----------------------------
+----------------------------providers\master_pin_provider.dart----------------------------
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -157,7 +157,7 @@ final masterPinProvider = StateNotifierProvider<MasterPinNotifier, MasterPinStat
   (ref) => MasterPinNotifier(),
 );
 
-----------------------------password_provider.dart----------------------------
+----------------------------providers\password_provider.dart----------------------------
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/password_entry.dart';
@@ -190,7 +190,7 @@ final passwordListProvider =
   return PasswordListNotifier();
 });
 
-----------------------------edit_screen.dart----------------------------
+----------------------------screens\edit_screen.dart----------------------------
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -359,7 +359,7 @@ class _EditScreenState extends ConsumerState<EditScreen> {
   }
 }
 
-----------------------------generate_screen.dart----------------------------
+----------------------------screens\generate_screen.dart----------------------------
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -485,7 +485,7 @@ class _GenerateScreenState extends ConsumerState<GenerateScreen> {
 	}
 }
 
-----------------------------pin_screen.dart----------------------------
+----------------------------screens\pin_screen.dart----------------------------
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -593,7 +593,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   }
 }
 
-----------------------------generator.dart----------------------------
+----------------------------services\generator.dart----------------------------
 
 import 'dart:math';
 import 'package:uuid/uuid.dart'; 
