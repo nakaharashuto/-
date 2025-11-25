@@ -45,129 +45,145 @@ class PasswordEntry {
 ----------------------------providers\auth_provider.dart----------------------------
 
 // ファイルパス: lib/providers/auth_provider.dart
-// 役割: アプリケーション全体の認証状態（ロック/ロック解除）を管理する
+// 役割: アプリの認証状態を管理する
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'master_pin_provider.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthNotifier extends StateNotifier<bool> {
-	AuthNotifier() : super(false); 
+	AuthNotifier() : super(false);
 
-	void authenticate() {
+	void login() {
 		state = true;
 	}
 
 	void lockApp() {
 		state = false;
 	}
-}
 
-final authProvider = StateNotifierProvider<AuthNotifier, bool>(
-	(ref) => AuthNotifier(),
-);
-
-final isSetupCompleteProvider = Provider<bool>((ref) {
-	return ref.watch(masterPinProvider).isPinSet;
-});
-
-----------------------------providers\master_pin_provider.dart----------------------------
-
-// ファイルパス: lib/providers/master_pin_provider.dart
-// 役割: マスターPINの保存、認証ロジック、生体認証処理を管理する
-
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:local_auth/local_auth.dart';
-import 'package:flutter/foundation.dart';
-import 'auth_provider.dart';
-
-class MasterPinState {
-	final bool isPinSet;
-
-	MasterPinState({required this.isPinSet});
-}
-
-final initialMasterPinState = MasterPinState(isPinSet: false);
-
-class MasterPinNotifier extends StateNotifier<MasterPinState> {
-	final Ref _ref; 
-	final LocalAuthentication _localAuth = LocalAuthentication();
-	static const _pinKey = 'masterPin';
-
-	MasterPinNotifier(this._ref) : super(initialMasterPinState) {
-		_loadPinStatus();
-	}
-	
-	Future<void> _loadPinStatus() async {
-		final prefs = await SharedPreferences.getInstance();
-		final pin = prefs.getString(_pinKey);
-		state = MasterPinState(isPinSet: pin != null && pin.isNotEmpty);
-        if (state.isPinSet) {
-             _ref.read(authProvider.notifier).lockApp();
-        }
-	}
-
-	Future<void> setPin(String pin) async {
-		final prefs = await SharedPreferences.getInstance();
-		await prefs.setString(_pinKey, pin);
-		state = MasterPinState(isPinSet: true);
-		_ref.read(authProvider.notifier).authenticate(); 
-	}
-    
-    Future<bool> checkCurrentPin(String pin) async {
-        final prefs = await SharedPreferences.getInstance();
-        final savedPin = prefs.getString(_pinKey);
-        return savedPin == pin;
-    }
-
-	Future<bool> authenticate(String pin) async {
-		final prefs = await SharedPreferences.getInstance();
-		final savedPin = prefs.getString(_pinKey);
-
-		if (savedPin == pin) {
-			_ref.read(authProvider.notifier).authenticate(); 
+	bool tryPin(String pin, String masterPin) {
+		if (pin == masterPin) {
+			login();
 			return true;
 		}
 		return false;
 	}
 
-	Future<bool> canAuthenticate() async {
-		final canCheckBiometrics = await _localAuth.canCheckBiometrics;
-		return canCheckBiometrics && await _localAuth.isDeviceSupported();
-	}
-
 	Future<bool> authenticateWithBiometrics() async {
+		final LocalAuthentication auth = LocalAuthentication();
+		bool didAuthenticate = false;
+
 		try {
-			final authenticated = await _localAuth.authenticate(
-				localizedReason: 'アプリをロック解除するために指紋または顔認証を行ってください',
+			final bool canCheckBiometrics = await auth.canCheckBiometrics;
+			if (!canCheckBiometrics) {
+				debugPrint('生体認証: デバイスが生体認証をサポートしていないか、設定されていません。');
+				return false;
+			}
+            
+            final List<BiometricType> availableBiometrics = await auth.getAvailableBiometrics();
+            if (availableBiometrics.isEmpty) {
+                debugPrint('生体認証: 生体認証が有効な認証手段として設定されていません。');
+                return false;
+            }
+
+			didAuthenticate = await auth.authenticate(
+				localizedReason: 'アプリをロック解除するには生体認証（指紋/顔）を行ってください',
 				options: const AuthenticationOptions(
+					useErrorDialogs: true,
 					stickyAuth: true,
-					biometricOnly: true,
+					biometricOnly: true, 
 				),
 			);
-			
-			if (authenticated) {
-				_ref.read(authProvider.notifier).authenticate(); 
+
+			if (didAuthenticate) {
+				login();
+				debugPrint('生体認証: 成功');
+			} else {
+				debugPrint('生体認証: ユーザーによってキャンセルされたか、認証に失敗しました。');
 			}
-			return authenticated;
+
 		} catch (e) {
-			debugPrint('生体認証エラー: $e');
+			debugPrint('生体認証エラー: $e'); 
 			return false;
 		}
+
+		return didAuthenticate;
 	}
 }
 
-final masterPinProvider = StateNotifierProvider<MasterPinNotifier, MasterPinState>(
-	(ref) {
-		return MasterPinNotifier(ref);
-	},
-);
+final authProvider = StateNotifierProvider<AuthNotifier, bool>((ref) {
+	return AuthNotifier();
+});
+
+----------------------------providers\master_pin_provider.dart----------------------------
+
+// ファイルパス: lib/providers/master_pin_provider.dart
+// 役割: マスターPINの状態とSharedPreferencesへの保存/読み込みを管理する
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'; // debugPrintのため
+
+class MasterPinState {
+    final String? masterPin;
+    final bool isPinSet;
+
+    MasterPinState({this.masterPin}) : isPinSet = masterPin != null;
+}
+
+class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
+    static const _pinKey = 'master_pin';
+
+    @override
+    Future<MasterPinState> build() async {
+        debugPrint('MasterPinNotifier: PINデータの初期ロードを開始');
+        final prefs = await SharedPreferences.getInstance();
+        
+        final pin = prefs.getString(_pinKey);
+
+        debugPrint('MasterPinNotifier: PINロード完了. PIN設定済み: ${pin != null}');
+        
+        return MasterPinState(masterPin: pin);
+    }
+    
+    Future<void> setPin(String pin) async {
+        if (state.isLoading) return; 
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_pinKey, pin);
+        
+        state = AsyncData(MasterPinState(masterPin: pin));
+        debugPrint('MasterPinNotifier: PINが設定されました。');
+    }
+
+    Future<void> clearPin() async {
+        if (state.isLoading) return;
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_pinKey);
+        
+        state = AsyncData(MasterPinState(masterPin: null));
+        debugPrint('MasterPinNotifier: PINが削除されました。');
+    }
+
+    bool checkCurrentPin(String pin) {
+        final currentPinState = state.value;
+        if (currentPinState == null || !currentPinState.isPinSet) {
+            return false;
+        }
+        return currentPinState.masterPin == pin;
+    }
+}
+
+final masterPinProvider = AsyncNotifierProvider<MasterPinNotifier, MasterPinState>(() {
+    return MasterPinNotifier();
+});
 
 ----------------------------providers\password_provider.dart----------------------------
 
 // ファイルパス: lib/providers/password_provider.dart
 // 役割: パスワードエントリのデータモデルと、エントリリストを管理するRiverpod Provider
-// データはメモリ内にのみ保持されます (アプリ終了で消えます)
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
