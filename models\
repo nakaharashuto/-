@@ -1,0 +1,42 @@
+------------------------------password_entry.dart------------------------------
+// ファイルパス: lib/models/password_entry.dart
+// 役割: パスワードエントリのデータ構造を定義
+
+class PasswordEntry {
+  final String id;
+  final String serviceName;
+  final String username;
+  final String encryptedPassword;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+
+  PasswordEntry({
+    required this.id,
+    required this.serviceName,
+    required this.username,
+    required this.encryptedPassword,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  PasswordEntry copyWith({
+    String? serviceName,
+    String? username,
+    String? encryptedPassword,
+    DateTime? updatedAt,
+  }) {
+    return PasswordEntry(
+      id: id,
+      serviceName: serviceName ?? this.serviceName,
+      username: username ?? this.username,
+      encryptedPassword: encryptedPassword ?? this.encryptedPassword,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? DateTime.now(),
+    );
+  }
+
+  @override
+  String toString() {
+    return 'PasswordEntry(service: $serviceName, user: $username, encrypted: $encryptedPassword)';
+  }
+}
