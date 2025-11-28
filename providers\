@@ -1,0 +1,88 @@
+------------------------------auth_provider.dart------------------------------
+// ファイルパス: lib/providers/auth_provider.dart
+// 役割: 認証状態（ロック/解除）の管理と、一定時間操作がない場合の自動ロック機能を提供
+
+import 'dart:async'; 
+import 'package:flutter/widgets.dart'; 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/auth_service.dart';
+
+final authServiceProvider = Provider((ref) => AuthService());
+
+
+class AuthNotifier extends StateNotifier<bool> {
+  final AuthService _authService;
+  
+  Timer? _lockTimer;
+  static const Duration _lockDelay = Duration(seconds: 30); 
+    
+  late final AppLifecycleListener _listener;
+
+  AuthNotifier(this._authService) : super(false) { 
+    _listener = AppLifecycleListener(
+      onStateChange: (AppLifecycleState state) {
+        _handleLifecycleChange(state);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    _lockTimer?.cancel();
+    super.dispose();
+  }
+  
+  void _handleLifecycleChange(AppLifecycleState state) {
+    if (this.state == true) {
+      if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+        debugPrint('App in background/inactive. Starting auto-lock timer.');
+        _lockTimer = Timer(_lockDelay, () {
+          lockApp();
+          debugPrint('Auto-lock triggered.');
+        });
+      } else if (state == AppLifecycleState.resumed) {
+        if (_lockTimer?.isActive == true) {
+          _lockTimer?.cancel();
+          debugPrint('App resumed. Auto-lock timer canceled.');
+        }
+      }
+    }
+  }
+  
+  // --- Auth Logic ---
+
+  void login() {
+    _lockTimer?.cancel();
+    state = true;
+  }
+
+  void lockApp() {
+    _lockTimer?.cancel();
+    state = false;
+  }
+
+  bool tryPin(String pin, String masterPin) {
+    if (pin == masterPin) {
+      login();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> authenticateWithBiometrics() async {
+    final didAuthenticate = await _authService.authenticate();
+    
+    if (didAuthenticate) {
+      login();
+      debugPrint('生体認証: 成功');
+    }
+    
+    return didAuthenticate;
+  }
+}
+
+final authProvider = StateNotifierProvider<AuthNotifier, bool>((ref) {
+  final authService = ref.watch(authServiceProvider); 
+  return AuthNotifier(authService); 
+});
