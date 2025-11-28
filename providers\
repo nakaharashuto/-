@@ -1,4 +1,5 @@
 ------------------------------auth_provider.dart------------------------------
+
 // ファイルパス: lib/providers/auth_provider.dart
 // 役割: 認証状態（ロック/解除）の管理と、一定時間操作がない場合の自動ロック機能を提供
 
@@ -85,4 +86,244 @@ class AuthNotifier extends StateNotifier<bool> {
 final authProvider = StateNotifierProvider<AuthNotifier, bool>((ref) {
   final authService = ref.watch(authServiceProvider); 
   return AuthNotifier(authService); 
+});
+
+
+------------------------------------------------------------------------------------------
+
+
+------------------------------master_pin_provider.dart------------------------------
+
+// ファイルパス: lib/providers/master_pin_provider.dart
+// 役割: マスターPINの状態と安全なストレージへの保存/読み込みを管理する
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
+
+class MasterPinState {
+	final String? masterPin;
+	final bool isPinSet;
+
+	MasterPinState({this.masterPin}) : isPinSet = masterPin != null;
+}
+
+class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
+	static const _pinKey = 'master_pin_secure';
+	
+	final _secureStorage = const FlutterSecureStorage();
+
+	@override
+	Future<MasterPinState> build() async {
+		debugPrint('MasterPinNotifier: PINデータの初期ロードを開始 (Secure Storage)');
+		
+		final pin = await _secureStorage.read(key: _pinKey);
+
+		debugPrint('MasterPinNotifier: PINロード完了. PIN設定済み: ${pin != null}');
+		
+		return MasterPinState(masterPin: pin);
+	}
+	
+	Future<void> setPin(String pin) async {
+		if (state.isLoading) return; 
+		
+		await _secureStorage.write(key: _pinKey, value: pin);
+		
+		state = AsyncData(MasterPinState(masterPin: pin));
+		debugPrint('MasterPinNotifier: PINが安全に設定されました。');
+	}
+
+	Future<void> clearPin() async {
+		if (state.isLoading) return;
+		
+		await _secureStorage.delete(key: _pinKey);
+		
+		state = AsyncData(MasterPinState(masterPin: null));
+		debugPrint('MasterPinNotifier: PINが削除されました。');
+	}
+
+	bool checkCurrentPin(String pin) {
+		final currentPinState = state.value;
+		if (currentPinState == null || !currentPinState.isPinSet) {
+			return false;
+		}
+		return currentPinState.masterPin == pin;
+	}
+}
+
+final masterPinProvider = AsyncNotifierProvider<MasterPinNotifier, MasterPinState>(() {
+	return MasterPinNotifier();
+});
+
+
+------------------------------------------------------------------------------------------
+
+
+------------------------------password_provider.dart------------------------------
+
+// ファイルパス: lib/providers/password_provider.dart
+// 役割: パスワードエントリのデータモデルと、エントリリストを管理するRiverpod Provider (暗号化/復号化対応)
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
+import '../services/generator.dart'; 
+
+const uuid = Uuid();
+
+class PasswordEntry {
+	final String id;
+	final String title;
+	final String username;
+	final String password; 
+	final String url;
+	final DateTime createdAt;
+
+	PasswordEntry({
+		required this.id,
+		required this.title,
+		required this.username,
+		required this.password,
+		this.url = '',
+		required this.createdAt,
+	});
+
+	PasswordEntry copyWith({
+		String? id,
+		String? title,
+		String? username,
+		String? password,
+		String? url,
+		DateTime? createdAt,
+	}) {
+		return PasswordEntry(
+			id: id ?? this.id,
+			title: title ?? this.title,
+			username: username ?? this.username,
+			password: password ?? this.password,
+			url: url ?? this.url,
+			createdAt: createdAt ?? this.createdAt,
+		);
+	}
+	
+	Map<String, dynamic> toMap() {
+		return {
+			'id': id,
+			'title': title,
+			'username': username,
+			'password': password,
+			'url': url,
+			'createdAt': createdAt.toIso8601String(),
+		};
+	}
+
+	factory PasswordEntry.fromMap(Map<String, dynamic> map) {
+		return PasswordEntry(
+			id: map['id'] as String,
+			title: map['title'] as String,
+			username: map['username'] as String,
+			password: map['password'] as String, 
+			url: map['url'] as String,
+			createdAt: DateTime.parse(map['createdAt'] as String),
+		);
+	}
+}
+
+class PasswordListNotifier extends AsyncNotifier<List<PasswordEntry>> {
+	static const _storageKey = 'encrypted_password_list_json';
+	
+	late final SharedPreferences _prefs;
+
+	@override
+	Future<List<PasswordEntry>> build() async {
+		debugPrint('PasswordListNotifier: 暗号化されたデータロード開始...');
+		
+		_prefs = await SharedPreferences.getInstance();
+
+		try {
+			final encryptedJsonString = _prefs.getString(_storageKey);
+
+			if (encryptedJsonString == null || encryptedJsonString.isEmpty) {
+				debugPrint('PasswordListNotifier: 暗号化データが見つかりません。空のリストを返します。');
+				return const [];
+			}
+
+			final jsonString = PasswordGeneratorService.decryptData(ref, encryptedJsonString);
+			
+			if (jsonString.isEmpty) {
+				debugPrint('PasswordListNotifier: 復号化に失敗しました。');
+				return const [];
+			}
+
+			final List<dynamic> jsonList = jsonDecode(jsonString);
+			
+			final List<PasswordEntry> entries = jsonList
+				.map((json) => PasswordEntry.fromMap(json as Map<String, dynamic>))
+				.toList();
+
+			debugPrint('PasswordListNotifier: ${entries.length} 件のデータを復号化・ロード完了。');
+			return entries;
+
+		} catch (e) {
+			debugPrint('PasswordListNotifier Error during load/decrypt: $e');
+			return const [];
+		}
+	}
+	
+	Future<void> _saveData() async {
+		// 💡 修正: state.value が null の場合に早期リターン
+		final listToSave = state.value;
+		if (listToSave == null) {
+			debugPrint('PasswordListNotifier: stateが未ロードのため保存をスキップ。');
+			return;
+		}
+		
+		final jsonList = listToSave.map((entry) => entry.toMap()).toList();
+		final jsonString = jsonEncode(jsonList);
+		
+		// 暗号化処理（サービス層に依存関係解決を委譲）
+		final encryptedData = PasswordGeneratorService.encryptData(ref, jsonString);
+
+		if (encryptedData == null) {
+			debugPrint('PasswordListNotifier: 暗号化キー（マスターPIN）がないため、保存をスキップしました。');
+			return;
+		}
+
+		await _prefs.setString(_storageKey, encryptedData);
+		debugPrint('PasswordListNotifier: データが暗号化され、SharedPreferencesに保存されました。');
+	}
+
+	// --- CRUD 操作 (保存ロジックの非同期化調整) ---
+
+	void addPassword(PasswordEntry entry) {
+		state = AsyncData([...state.value ?? [], entry]); 
+		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
+		_saveData(); 
+	}
+
+	void updatePassword(PasswordEntry updatedEntry) {
+		state = AsyncData([
+			for (final entry in state.value ?? [])
+				if (entry.id == updatedEntry.id) updatedEntry else entry,
+		]);
+		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
+		_saveData();
+	}
+
+	void deletePassword(String id) {
+		// state.value は AsyncData の場合のみ非null
+		final currentList = state.value;
+		if (currentList == null) return;
+		
+		state = AsyncData(currentList.where((entry) => entry.id != id).toList());
+		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
+		_saveData();
+	}
+}
+
+final passwordListProvider = 
+	AsyncNotifierProvider<PasswordListNotifier, List<PasswordEntry>>(() {
+	return PasswordListNotifier();
 });
