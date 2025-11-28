@@ -1,21 +1,36 @@
-lib
-	mosels
+lib\
+	mosels\
 		password_entry.dart // 役割: パスワードエントリのデータ構造を定義
-	providers
+
+	providers\
 		auth_provider.dart // 役割: 認証状態（ロック/解除）の管理と、一定時間操作がない場合の自動ロック機能を提供
+
 		master_pin_provider.dart // 役割: マスターPINの状態と安全なストレージへの保存/読み込みを管理する
+
 		password_provider.dart // 役割: パスワードエントリのデータモデルと、エントリリストを管理するRiverpod Provider (暗号化/復号化対応)
-	screens
+
+	screens\
 		add_password_screen.dart // 役割: 新しいパスワード情報の追加 および 既存パスワード情報の編集 を行う汎用フォーム画面
+
 		auth_screen.dart // 役割: ロック解除のためのPIN入力および生体認証画面
+
 		edit_screen.dart // 役割: 既存のパスワードエントリの詳細表示と編集
+
 		generate_screen.dart // 役割: パスワード生成の設定と実行、結果表示、クリップボードへのコピー、およびパスワードリストへの保存
+
 		home_screen.dart // 役割: メインコンテンツ画面（TabBarとAppBarを含む）。AuthWrapperから分離されたもの。
+
 		password_list_screen.dart // 役割: パスワードエントリの一覧表示、詳細表示、編集/削除操作（外部ProviderとFormに依存）
+
 		set_pin_screen.dart // 役割: アプリ初回起動時、またはPIN未設定時にマスターPINを設定する画面
+
 		settings_screen.dart // 役割: 設定画面。PINの変更やログアウト（ロック）機能を提供する。
+
 		setup_screen.dart // 役割: 初回起動時のセットアップ（ここではマスターPIN設定を兼ねる）
-	services
+
+	services\
 		auth_service.dart // 役割: 生体認証（Local Authentication）のロジックを管理するサービス
+
 		generator.dart // 役割: 強力なランダムパスワードを生成する静的サービス および データ暗号化/復号化サービス
+
 main.dart // 役割: アプリのエントリーポイント、テーマ設定、認証ラッパー
