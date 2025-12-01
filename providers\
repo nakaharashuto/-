@@ -153,21 +153,17 @@ final masterPinProvider = AsyncNotifierProvider<MasterPinNotifier, MasterPinStat
 	return MasterPinNotifier();
 });
 
-
 ------------------------------------------------------------------------------------------
 
 
 ------------------------------password_provider.dart------------------------------
 
 // ファイルパス: lib/providers/password_provider.dart
-// 役割: パスワードエントリのデータモデルと、エントリリストを管理するRiverpod Provider (暗号化/復号化対応)
+// 役割: パスワードエントリのデータモデルと、エントリリストを管理するRiverpod Provider (メモリ内管理のみ)
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
-import '../services/generator.dart'; 
 
 const uuid = Uuid();
 
@@ -230,75 +226,15 @@ class PasswordEntry {
 }
 
 class PasswordListNotifier extends AsyncNotifier<List<PasswordEntry>> {
-	static const _storageKey = 'encrypted_password_list_json';
-	
-	late final SharedPreferences _prefs;
 
 	@override
 	Future<List<PasswordEntry>> build() async {
-		debugPrint('PasswordListNotifier: 暗号化されたデータロード開始...');
-		
-		_prefs = await SharedPreferences.getInstance();
-
-		try {
-			final encryptedJsonString = _prefs.getString(_storageKey);
-
-			if (encryptedJsonString == null || encryptedJsonString.isEmpty) {
-				debugPrint('PasswordListNotifier: 暗号化データが見つかりません。空のリストを返します。');
-				return const [];
-			}
-
-			final jsonString = PasswordGeneratorService.decryptData(ref, encryptedJsonString);
-			
-			if (jsonString.isEmpty) {
-				debugPrint('PasswordListNotifier: 復号化に失敗しました。');
-				return const [];
-			}
-
-			final List<dynamic> jsonList = jsonDecode(jsonString);
-			
-			final List<PasswordEntry> entries = jsonList
-				.map((json) => PasswordEntry.fromMap(json as Map<String, dynamic>))
-				.toList();
-
-			debugPrint('PasswordListNotifier: ${entries.length} 件のデータを復号化・ロード完了。');
-			return entries;
-
-		} catch (e) {
-			debugPrint('PasswordListNotifier Error during load/decrypt: $e');
-			return const [];
-		}
+		debugPrint('PasswordListNotifier: メモリ内データ管理に切り替えました。アプリ終了でデータは消えます。');
+		return const [];
 	}
 	
-	Future<void> _saveData() async {
-		// 💡 修正: state.value が null の場合に早期リターン
-		final listToSave = state.value;
-		if (listToSave == null) {
-			debugPrint('PasswordListNotifier: stateが未ロードのため保存をスキップ。');
-			return;
-		}
-		
-		final jsonList = listToSave.map((entry) => entry.toMap()).toList();
-		final jsonString = jsonEncode(jsonList);
-		
-		// 暗号化処理（サービス層に依存関係解決を委譲）
-		final encryptedData = PasswordGeneratorService.encryptData(ref, jsonString);
-
-		if (encryptedData == null) {
-			debugPrint('PasswordListNotifier: 暗号化キー（マスターPIN）がないため、保存をスキップしました。');
-			return;
-		}
-
-		await _prefs.setString(_storageKey, encryptedData);
-		debugPrint('PasswordListNotifier: データが暗号化され、SharedPreferencesに保存されました。');
-	}
-
-	// --- CRUD 操作 (保存ロジックの非同期化調整) ---
-
 	void addPassword(PasswordEntry entry) {
 		state = AsyncData([...state.value ?? [], entry]); 
-		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
-		_saveData(); 
 	}
 
 	void updatePassword(PasswordEntry updatedEntry) {
@@ -306,18 +242,13 @@ class PasswordListNotifier extends AsyncNotifier<List<PasswordEntry>> {
 			for (final entry in state.value ?? [])
 				if (entry.id == updatedEntry.id) updatedEntry else entry,
 		]);
-		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
-		_saveData();
 	}
 
 	void deletePassword(String id) {
-		// state.value は AsyncData の場合のみ非null
 		final currentList = state.value;
 		if (currentList == null) return;
 		
 		state = AsyncData(currentList.where((entry) => entry.id != id).toList());
-		// 💡 修正: 状態更新後にバックグラウンドで保存を実行
-		_saveData();
 	}
 }
 
@@ -325,3 +256,5 @@ final passwordListProvider =
 	AsyncNotifierProvider<PasswordListNotifier, List<PasswordEntry>>(() {
 	return PasswordListNotifier();
 });
+
+------------------------------------------------------------------------------------------
