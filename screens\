@@ -1,1 +1,1854 @@
+------------------------------add_password_screen.dart------------------------------
+
+// ファイルパス: lib/screens/add_password_screen.dart
+// 役割: 新しいパスワード情報の追加 および 既存パスワード情報の編集 を行う汎用フォーム画面
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+import '../providers/password_provider.dart';
+import '../services/generator.dart';
+
+const uuid = Uuid();
+
+class PasswordFormScreen extends ConsumerStatefulWidget {
+	final PasswordEntry? entry;
+	
+	final String? initialGeneratedPassword;
+	
+	const PasswordFormScreen({
+		super.key,
+		this.entry,
+		this.initialGeneratedPassword,
+	});
+
+	@override
+	ConsumerState<PasswordFormScreen> createState() => _PasswordFormScreenState();
+}
+
+class _PasswordFormScreenState extends ConsumerState<PasswordFormScreen> {
+	final serviceController = TextEditingController();
+	final usernameController = TextEditingController();
+	final passwordController = TextEditingController();
+	final urlController = TextEditingController();
+
+	final formKey = GlobalKey<FormState>();
+	late final bool isEditing;
+
+	@override
+	void initState() {
+		super.initState();
+		isEditing = widget.entry != null;
+		
+		if (isEditing) {
+			serviceController.text = widget.entry!.title;
+			usernameController.text = widget.entry!.username;
+			passwordController.text = widget.entry!.password;
+			urlController.text = widget.entry!.url;
+		} 
+		else if (widget.initialGeneratedPassword != null) {
+			passwordController.text = widget.initialGeneratedPassword!;
+		}
+	}
+
+	@override
+	void dispose() {
+		serviceController.dispose();
+		usernameController.dispose();
+		passwordController.dispose();
+		urlController.dispose();
+		super.dispose();
+	}
+
+	void _submitForm() {
+		if (formKey.currentState!.validate()) {
+			final newEntry = PasswordEntry(
+				id: isEditing ? widget.entry!.id : uuid.v4(),
+				title: serviceController.text,
+				username: usernameController.text,
+				password: passwordController.text,
+				url: urlController.text,
+				createdAt: isEditing ? widget.entry!.createdAt : DateTime.now(),
+			);
+
+			final notifier = ref.read(passwordListProvider.notifier);
+			
+			if (isEditing) {
+				notifier.updatePassword(newEntry);
+			} else {
+				notifier.addPassword(newEntry);
+			}
+			
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text(isEditing ? '${newEntry.title} を更新しました。' : '${newEntry.title} をリストに追加しました。')),
+			);
+			
+			Navigator.of(context).pop();
+		}
+	}
+
+	void _generatePassword() {
+		final generatedPassword = PasswordGeneratorService.generatePassword(
+			length: 16,
+			useUpper: true,
+			useNumbers: true,
+			useSymbols: true,
+		);
+		passwordController.text = generatedPassword;
+		ScaffoldMessenger.of(context).showSnackBar(
+			const SnackBar(content: Text('強力なパスワードを自動生成しました。')),
+		);
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		final theme = Theme.of(context);
+		final titleText = isEditing ? 'パスワードを編集' : '新しいパスワードを追加';
+
+		return Scaffold(
+			appBar: AppBar(
+				title: Text(titleText),
+				backgroundColor: theme.colorScheme.primary,
+				foregroundColor: Colors.white,
+				automaticallyImplyLeading: true, // デフォルトに戻す
+			),
+			body: SingleChildScrollView(
+				padding: const EdgeInsets.all(20.0),
+				child: Form(
+					key: formKey,
+					child: Column(
+						crossAxisAlignment: CrossAxisAlignment.start,
+						children: [
+							_buildTextField(
+								controller: serviceController,
+								label: 'サービス名 / ウェブサイト (必須)',
+								icon: Icons.title,
+								validator: (value) => value!.isEmpty ? 'タイトルは必須です' : null,
+							),
+							const SizedBox(height: 20),
+
+							_buildTextField(
+								controller: usernameController,
+								label: 'ユーザー名 / メールアドレス',
+								icon: Icons.person,
+							),
+							const SizedBox(height: 20),
+
+							_buildPasswordField(
+								controller: passwordController,
+								validator: (value) => value!.isEmpty ? 'パスワードは必須です' : null,
+								onGenerate: _generatePassword,
+							),
+							const SizedBox(height: 20),
+
+							_buildTextField(
+								controller: urlController,
+								label: 'URL',
+								icon: Icons.link,
+								keyboardType: TextInputType.url,
+							),
+							const SizedBox(height: 30),
+
+							SizedBox(
+								width: double.infinity,
+								child: ElevatedButton.icon(
+									onPressed: _submitForm,
+									icon: Icon(isEditing ? Icons.update : Icons.save),
+									label: Text(isEditing ? '更新' : '保存', style: const TextStyle(fontSize: 18)),
+									style: ElevatedButton.styleFrom(
+										padding: const EdgeInsets.symmetric(vertical: 15),
+										backgroundColor: theme.colorScheme.secondary,
+										foregroundColor: Colors.white,
+										shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+									),
+								),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+
+	Widget _buildTextField({
+		required TextEditingController controller,
+		required String label,
+		required IconData icon,
+		int maxLines = 1,
+		TextInputType keyboardType = TextInputType.text,
+		String? Function(String?)? validator,
+	}) {
+		return TextFormField(
+			controller: controller,
+			maxLines: maxLines,
+			keyboardType: keyboardType,
+			validator: validator,
+			decoration: InputDecoration(
+				labelText: label,
+				prefixIcon: Icon(icon),
+				border: OutlineInputBorder(
+					borderRadius: BorderRadius.circular(10),
+				),
+				filled: true,
+				fillColor: Colors.white,
+			),
+		);
+	}
+
+	Widget _buildPasswordField({
+		required TextEditingController controller,
+		String? Function(String?)? validator,
+		required VoidCallback onGenerate,
+	}) {
+		return TextFormField(
+			controller: controller,
+			obscureText: true,
+			validator: validator,
+			decoration: InputDecoration(
+				labelText: 'パスワード (必須)',
+				prefixIcon: const Icon(Icons.vpn_key),
+				suffixIcon: IconButton(
+					icon: const Icon(Icons.refresh),
+					onPressed: onGenerate,
+					tooltip: 'パスワードを自動生成',
+				),
+				border: OutlineInputBorder(
+					borderRadius: BorderRadius.circular(10),
+				),
+				filled: true,
+				fillColor: Colors.white,
+			),
+		);
+	}
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------auth_screen.dart------------------------------
+
+// ファイルパス: lib/screens/auth_screen.dart
+// 役割: ロック解除のためのPIN入力および生体認証画面
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io' show Platform;
+import '../providers/auth_provider.dart';
+import '../providers/master_pin_provider.dart';
+
+class AuthScreen extends ConsumerStatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends ConsumerState<AuthScreen> {
+  final _pinController = TextEditingController();
+  String _errorMessage = '';
+  bool _isLoading = false;
+  bool _biometricsAvailable = false;
+  bool _isBiometricsChecking = true;
+
+  bool get _isDesktopPlatform {
+    try {
+      return Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_isDesktopPlatform) {
+      _checkBiometrics();
+    } else {
+      _isBiometricsChecking = false;
+      _biometricsAvailable = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkBiometrics() async {
+    if (!mounted) return;
+    setState(() => _isBiometricsChecking = true);
+    
+    final authService = ref.read(authServiceProvider); 
+    
+    try {
+      final available = await authService.isBiometricsAvailable(); 
+      
+      if (mounted) {
+        setState(() {
+          _biometricsAvailable = available;
+          _isBiometricsChecking = false;
+          
+          if (!available) {
+            debugPrint('Biometrics Check: 生体認証は利用できません。');
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('生体認証チェックエラー (AuthService経由): $e');
+      if (mounted) {
+        setState(() {
+          _biometricsAvailable = false;
+          _isBiometricsChecking = false;
+        });
+      }
+    }
+  }
+
+  void _submitPin() {
+    if (_isLoading) return;
+
+    final pin = _pinController.text;
+    if (pin.length != 4) {
+      setState(() => _errorMessage = 'PINは4桁の数字で入力してください。');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+    
+    final masterPinState = ref.read(masterPinProvider).value; 
+    final authNotifier = ref.read(authProvider.notifier);
+    
+    if (masterPinState == null || !masterPinState.isPinSet) {
+      setState(() => _errorMessage = 'マスターPINが設定されていません。');
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+    
+    final masterPin = masterPinState.masterPin!; 
+
+    if (authNotifier.tryPin(pin, masterPin)) {
+    } else {
+      setState(() => _errorMessage = 'PINが正しくありません。');
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _startBiometricsAuth() async {
+    if (_isLoading || !_biometricsAvailable) return;
+    
+    if (_isDesktopPlatform) {
+      debugPrint('Biometrics skipped on desktop platform.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    final authNotifier = ref.read(authProvider.notifier);
+    final success = await authNotifier.authenticateWithBiometrics();
+
+    if (!success) {
+      setState(() => _errorMessage = '認証に失敗しました。PINで試してください。');
+    } else {
+      // 認証成功
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final shouldShowBiometrics = !_isDesktopPlatform && _biometricsAvailable && !_isBiometricsChecking;
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Icon(Icons.lock_person, size: 80, color: theme.colorScheme.primary),
+              const SizedBox(height: 16),
+              Text(
+                'ロック解除',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              TextField(
+                controller: _pinController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, letterSpacing: 8),
+                decoration: const InputDecoration(
+                  labelText: '4桁のPINコード',
+                  counterText: '',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+                  prefixIcon: Icon(Icons.vpn_key),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              if (_errorMessage.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _errorMessage,
+                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              ElevatedButton(
+                onPressed: _isLoading ? null : _submitPin,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 4,
+                ),
+                child: _isLoading && _errorMessage.isEmpty
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                      )
+                    : const Text('PINでロック解除', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+              
+              if (_isBiometricsChecking && !_isDesktopPlatform) ...[
+                const SizedBox(height: 24),
+                const Divider(thickness: 1, indent: 32, endIndent: 32),
+                const SizedBox(height: 24),
+                const Center(child: CircularProgressIndicator()),
+                const SizedBox(height: 8),
+                const Center(child: Text('生体認証の確認中...')),
+              ]
+              else if (shouldShowBiometrics) ...[
+                const SizedBox(height: 24),
+                const Divider(thickness: 1, indent: 32, endIndent: 32),
+                const SizedBox(height: 24),
+                
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _startBiometricsAuth,
+                  icon: const Icon(Icons.fingerprint, size: 28),
+                  label: const Text('生体認証でロック解除', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    foregroundColor: theme.colorScheme.secondary,
+                    side: BorderSide(color: theme.colorScheme.secondary, width: 2),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------edit_screen.dart------------------------------
+
+// ファイルパス: lib/screens/edit_screen.dart
+// 役割: 既存のパスワードエントリの詳細表示と編集
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/password_provider.dart';
+
+class EditPasswordScreen extends ConsumerStatefulWidget {
+  final PasswordEntry entry;
+  
+  const EditPasswordScreen({required this.entry, super.key});
+
+  @override
+  ConsumerState<EditPasswordScreen> createState() => _EditPasswordScreenState();
+}
+
+class _EditPasswordScreenState extends ConsumerState<EditPasswordScreen> {
+  late TextEditingController _titleController;
+  late TextEditingController _usernameController;
+  late TextEditingController _passwordController;
+  late TextEditingController _urlController;
+  
+  final _formKey = GlobalKey<FormState>();
+  
+  bool _isPasswordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.entry.title);
+    _usernameController = TextEditingController(text: widget.entry.username);
+    _passwordController = TextEditingController(text: widget.entry.password);
+    _urlController = TextEditingController(text: widget.entry.url);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _saveEntry() {
+    if (_formKey.currentState!.validate()) {
+      final updatedEntry = widget.entry.copyWith(
+        title: _titleController.text,
+        username: _usernameController.text,
+        password: _passwordController.text,
+        url: _urlController.text,
+      );
+      
+      ref.read(passwordListProvider.notifier).updatePassword(updatedEntry); 
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('パスワードエントリを更新しました。')),
+      );
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.entry.title} の編集'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        actions: [
+          IconButton(
+            onPressed: _saveEntry,
+            icon: const Icon(Icons.save),
+            tooltip: '保存',
+          )
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'タイトル (例: Google, 銀行)',
+                  prefixIcon: Icon(Icons.title),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'タイトルは必須です';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'ユーザー名 / メールアドレス',
+                  prefixIcon: Icon(Icons.person),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                decoration: InputDecoration(
+                  labelText: 'パスワード',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'パスワードは必須です';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _urlController,
+                decoration: const InputDecoration(
+                  labelText: 'URL / ウェブサイト',
+                  prefixIcon: Icon(Icons.link),
+                ),
+                keyboardType: TextInputType.url,
+              ),
+
+              const SizedBox(height: 30),
+
+              ElevatedButton.icon(
+                onPressed: _saveEntry,
+                icon: const Icon(Icons.save),
+                label: const Text('変更を保存'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------generate_screen.dart------------------------------
+
+// ファイルパス: lib/screens/generate_screen.dart
+// 役割: パスワード生成の設定と実行、結果表示、クリップボードへのコピー、およびパスワードリストへの保存
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/generator.dart';
+import 'add_password_screen.dart';
+
+class GenerationSettings {
+	final int length;
+	final bool useUpper;
+	final bool useNumbers;
+	final bool useSymbols;
+
+	GenerationSettings({
+		required this.length,
+		required this.useUpper,
+		required this.useNumbers,
+		required this.useSymbols,
+	});
+
+	GenerationSettings copyWith({
+		int? length,
+		bool? useUpper,
+		bool? useNumbers,
+		bool? useSymbols,
+	}) {
+		return GenerationSettings(
+			length: length ?? this.length,
+			useUpper: useUpper ?? this.useUpper,
+			useNumbers: useNumbers ?? this.useNumbers,
+			useSymbols: useSymbols ?? this.useSymbols,
+		);
+	}
+}
+
+class GenerationSettingsNotifier extends StateNotifier<GenerationSettings> {
+	GenerationSettingsNotifier()
+			: super(
+				GenerationSettings(
+					length: 16,
+					useUpper: true,
+					useNumbers: true,
+					useSymbols: true,
+				),
+			);
+	
+	void setLength(int length) => state = state.copyWith(length: length);
+	void setUseUpper(bool value) => state = state.copyWith(useUpper: value);
+	void setUseNumbers(bool value) => state = state.copyWith(useNumbers: value);
+	void setUseSymbols(bool value) => state = state.copyWith(useSymbols: value);
+}
+
+final generationSettingsProvider = StateNotifierProvider<GenerationSettingsNotifier, GenerationSettings>(
+	(ref) => GenerationSettingsNotifier(),
+);
+
+final generatedPasswordProvider = StateProvider<String>((ref) => '');
+
+class GenerateScreen extends ConsumerWidget {
+	const GenerateScreen({super.key});
+
+	@override
+	Widget build(BuildContext context, WidgetRef ref) {
+		final settings = ref.watch(generationSettingsProvider);
+		final generatedPassword = ref.watch(generatedPasswordProvider);
+		final settingsNotifier = ref.read(generationSettingsProvider.notifier);
+
+		void generatePassword() {
+			final newPassword = PasswordGeneratorService.generatePassword(
+				length: settings.length,
+				useUpper: settings.useUpper,
+				useNumbers: settings.useNumbers,
+				useSymbols: settings.useSymbols,
+			);
+			ref.read(generatedPasswordProvider.notifier).state = newPassword;
+		}
+
+		void copyToClipboard(String text) {
+			Clipboard.setData(ClipboardData(text: text));
+			ScaffoldMessenger.of(context).showSnackBar(
+				const SnackBar(content: Text('パスワードをクリップボードにコピーしました。')),
+			);
+		}
+
+		void navigateToSaveScreen(String password) {
+			Navigator.of(context).push(
+				MaterialPageRoute(
+					builder: (ctx) => PasswordFormScreen(
+						entry: null, 
+						initialGeneratedPassword: password, 
+					),
+				),
+			);
+			ref.read(generatedPasswordProvider.notifier).state = '';
+		}
+
+		return SingleChildScrollView(
+			padding: const EdgeInsets.all(16.0),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.stretch,
+				children: <Widget>[
+					
+					Text(
+						'生成設定',
+						style: Theme.of(context).textTheme.headlineSmall,
+					),
+					const Divider(height: 16),
+
+					Card(
+						child: Padding(
+							padding: const EdgeInsets.all(16.0),
+							child: Column(
+								crossAxisAlignment: CrossAxisAlignment.start,
+								children: [
+									Text('パスワードの長さ: ${settings.length} 文字', style: Theme.of(context).textTheme.titleMedium),
+									Slider(
+										value: settings.length.toDouble(),
+										min: 8,
+										max: 32,
+										divisions: 24,
+										label: settings.length.toString(),
+										onChanged: (double value) {
+											settingsNotifier.setLength(value.round());
+										},
+									),
+								],
+							),
+						),
+					),
+					
+					const SizedBox(height: 16),
+
+					Card(
+						child: Column(
+							children: [
+								SwitchListTile(
+									title: const Text('大文字 (A-Z)'),
+									value: settings.useUpper,
+									onChanged: (bool value) {
+										settingsNotifier.setUseUpper(value);
+									},
+								),
+								SwitchListTile(
+									title: const Text('数字 (0-9)'),
+									value: settings.useNumbers,
+									onChanged: (bool value) {
+										settingsNotifier.setUseNumbers(value);
+									},
+								),
+								SwitchListTile(
+									title: const Text('記号 (!@#\$...)'), 
+									value: settings.useSymbols, 
+									onChanged: (bool value) {
+										settingsNotifier.setUseSymbols(value);
+									},
+								),
+								const ListTile(
+									title: Text('小文字 (a-z)'),
+									trailing: Icon(Icons.check_circle, color: Colors.green),
+									subtitle: Text('セキュリティのため常に含まれます'),
+								),
+							],
+						),
+					),
+					
+					const SizedBox(height: 32),
+					
+					Card(
+						elevation: 4,
+						shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+						child: Padding(
+							padding: const EdgeInsets.all(20.0),
+							child: Column(
+								crossAxisAlignment: CrossAxisAlignment.stretch,
+								children: [
+									Text(
+										'生成されたパスワード',
+										style: Theme.of(context).textTheme.titleMedium,
+									),
+									const SizedBox(height: 12),
+									Container(
+										padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+										decoration: BoxDecoration(
+											color: Theme.of(context).colorScheme.primary.withAlpha(50), 
+											borderRadius: BorderRadius.circular(8),
+											border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(100)),
+										),
+										child: SelectableText(
+											generatedPassword.isEmpty ? '設定を確認し、「生成」ボタンを押してください。' : generatedPassword,
+											style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+											textAlign: TextAlign.center,
+										),
+									),
+									const SizedBox(height: 16),
+									
+									if (generatedPassword.isNotEmpty)
+										Padding(
+											padding: const EdgeInsets.only(bottom: 8.0),
+											child: ElevatedButton.icon(
+												onPressed: () => navigateToSaveScreen(generatedPassword),
+												icon: const Icon(Icons.add_circle_outline),
+												label: const Text('パスワードとして保存', style: TextStyle(fontSize: 16)),
+												style: ElevatedButton.styleFrom(
+													backgroundColor: Theme.of(context).colorScheme.tertiary,
+													foregroundColor: Theme.of(context).colorScheme.onTertiary,
+													minimumSize: const Size(double.infinity, 45),
+												),
+											),
+										),
+									
+									ElevatedButton.icon(
+										onPressed: generatedPassword.isEmpty ? null : () => copyToClipboard(generatedPassword),
+										icon: const Icon(Icons.copy),
+										label: const Text('クリップボードにコピー'),
+										style: ElevatedButton.styleFrom(
+											backgroundColor: generatedPassword.isEmpty 
+												? Colors.grey 
+												: Theme.of(context).colorScheme.secondary,
+											foregroundColor: Colors.white,
+											minimumSize: const Size(double.infinity, 45),
+										),
+									),
+								],
+							),
+						),
+					),
+					
+					const SizedBox(height: 32),
+					
+					ElevatedButton.icon(
+						onPressed: generatePassword,
+						icon: const Icon(Icons.security),
+						label: const Text('強力なパスワードを生成'),
+						style: ElevatedButton.styleFrom(
+							backgroundColor: Theme.of(context).colorScheme.tertiary,
+							foregroundColor: Theme.of(context).colorScheme.onTertiary,
+							minimumSize: const Size(double.infinity, 60),
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+						),
+					),
+				],
+			),
+		);
+	}
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------home_screen.dart------------------------------
+
+// ファイルパス: lib/screens/home_screen.dart
+// 役割: メインコンテンツ画面（TabBarとAppBarを含む）。AuthWrapperから分離されたもの。
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart'; 
+import 'password_list_screen.dart';
+import 'generate_screen.dart';
+import 'add_password_screen.dart';
+import 'settings_screen.dart';
+
+class HomeScreen extends ConsumerWidget {
+	const HomeScreen({super.key});
+
+	void _navigateToAddPasswordScreen(BuildContext context) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				builder: (context) => const PasswordFormScreen(), 
+			),
+		);
+	}
+	
+	void _navigateToSettingsScreen(BuildContext context) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				builder: (context) => const SettingsScreen(),
+			),
+		);
+	}
+
+	@override
+	Widget build(BuildContext context, WidgetRef ref) {
+		void lockApp() {
+			ref.read(authProvider.notifier).lockApp();
+		}
+		
+		final theme = Theme.of(context);
+
+		return DefaultTabController(
+			key: const ValueKey('MainAppScreen'),
+			length: 2,
+			child: Builder(
+				builder: (context) {
+					final TabController tabController = DefaultTabController.of(context);
+					
+					return ListenableBuilder(
+						listenable: tabController,
+						builder: (context, child) {
+							final int currentIndex = tabController.index; 
+							
+							return Scaffold(
+								appBar: AppBar( 
+									title: const Text('パスワードマネージャー'), 
+									backgroundColor: theme.colorScheme.primary,
+									foregroundColor: Colors.white,
+									actions: [
+										IconButton(
+											icon: const Icon(Icons.settings),
+											tooltip: '設定',
+											onPressed: () => _navigateToSettingsScreen(context),
+										),
+										IconButton(
+											icon: const Icon(Icons.lock_outline),
+											tooltip: 'アプリをロック',
+											onPressed: lockApp, 
+										),
+									],
+									bottom: const TabBar(
+										labelColor: Colors.white,
+										unselectedLabelColor: Colors.white70,
+										tabs: [
+											Tab(icon: Icon(Icons.lock_open), text: 'パスワード管理'),
+											Tab(icon: Icon(Icons.vpn_key), text: 'パスワード生成'),
+										],
+									),
+								),
+								body: const TabBarView(
+									children: [
+										PasswordListScreen(), 
+										GenerateScreen(),
+									],
+								),
+								
+								floatingActionButton: currentIndex == 0
+									? FloatingActionButton(
+										heroTag: 'addPasswordButtonHome',
+										onPressed: () => _navigateToAddPasswordScreen(context),
+										tooltip: 'パスワードを追加',
+										child: const Icon(Icons.add),
+									)
+									: null,
+							);
+						}
+					);
+				}
+			),
+		);
+	}
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------password_list_screen.dart------------------------------
+
+// ファイルパス: lib/screens/password_list_screen.dart
+// 役割: パスワードエントリの一覧表示、詳細表示、編集/削除操作（外部ProviderとFormに依存）
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/password_provider.dart';
+import 'add_password_screen.dart';
+
+class PasswordDetailScreen extends StatelessWidget {
+	final PasswordEntry entry; 
+
+	const PasswordDetailScreen({super.key, required this.entry});
+
+	void _copyToClipboard(BuildContext context, String text, String label) {
+		Clipboard.setData(ClipboardData(text: text));
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(content: Text('$labelをクリップボードにコピーしました')),
+		);
+	}
+
+	Widget _buildDetailItem(BuildContext context, IconData icon, String title, String value, bool isPassword) {
+		final theme = Theme.of(context);
+		String displayValue = isPassword ? '••••••••' : value; 
+
+		return Card(
+			margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
+			elevation: 2,
+			shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			child: ListTile(
+				leading: Icon(icon, color: theme.colorScheme.primary),
+				title: Text(title, style: theme.textTheme.labelLarge),
+				subtitle: Text(displayValue, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+				trailing: IconButton(
+					icon: Icon(Icons.copy, color: theme.colorScheme.secondary),
+					onPressed: () => _copyToClipboard(context, value, title),
+				),
+			),
+		);
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		final theme = Theme.of(context);
+		
+		return Scaffold(
+			appBar: AppBar(
+				title: Text(entry.title),
+				backgroundColor: theme.colorScheme.primary,
+				foregroundColor: Colors.white,
+				actions: [
+					IconButton(
+						icon: const Icon(Icons.edit),
+						onPressed: () {
+							Navigator.of(context).push(
+								MaterialPageRoute(
+									builder: (ctx) => PasswordFormScreen(entry: entry),
+								),
+							);
+						},
+					),
+				],
+			),
+			body: SingleChildScrollView(
+				padding: const EdgeInsets.all(16.0),
+				child: Column(
+					crossAxisAlignment: CrossAxisAlignment.start,
+					children: [
+						_buildDetailItem(context, Icons.title, 'サービス名', entry.title, false),
+						_buildDetailItem(context, Icons.person, 'ユーザー名', entry.username, false),
+						_buildDetailItem(context, Icons.lock, 'パスワード', entry.password, true),
+						_buildDetailItem(context, Icons.link, 'URL', entry.url, false),
+						Card(
+							margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 0),
+							elevation: 2,
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							child: ListTile(
+								leading: Icon(Icons.calendar_today, color: Colors.grey.shade600),
+								title: Text('作成日', style: theme.textTheme.labelLarge),
+								subtitle: Text(
+									'${entry.createdAt.year}/${entry.createdAt.month}/${entry.createdAt.day}',
+									style: theme.textTheme.titleSmall,
+								),
+							),
+						),
+						const SizedBox(height: 30),
+						Center(
+							child: Text(
+								'※クリップボードへのコピーは自動ロックの対象となります',
+								style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class PasswordListScreen extends ConsumerWidget {
+	const PasswordListScreen({super.key});
+
+	void _copyToClipboard(BuildContext context, String password) {
+		Clipboard.setData(ClipboardData(text: password));
+		ScaffoldMessenger.of(context).showSnackBar(
+			const SnackBar(content: Text('パスワードをクリップボードにコピーしました (5秒後に自動ロック)')),
+		);
+	}
+	
+	void _showDeleteConfirmationDialog(BuildContext context, WidgetRef ref, PasswordEntry entry) {
+		showDialog(
+			context: context,
+			builder: (ctx) => AlertDialog(
+				title: const Text('本当に削除しますか？'),
+				content: Text('${entry.title} のパスワードを削除します。この操作は元に戻せません。'),
+				actions: <Widget>[
+					TextButton(
+						onPressed: () {
+							Navigator.of(ctx).pop(false);
+						},
+						child: const Text('キャンセル'),
+					),
+					ElevatedButton(
+						onPressed: () {
+							ref.read(passwordListProvider.notifier).deletePassword(entry.id); 
+							Navigator.of(ctx).pop(true);
+							ScaffoldMessenger.of(context).showSnackBar(
+								SnackBar(content: Text('${entry.title} を削除しました'))
+							);
+						},
+						style: ElevatedButton.styleFrom(
+							backgroundColor: Colors.red,
+							foregroundColor: Colors.white,
+						),
+						child: const Text('削除', style: TextStyle(fontWeight: FontWeight.bold)),
+					),
+				],
+			),
+		);
+	}
+
+	void _editEntry(BuildContext context, PasswordEntry entry) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				builder: (ctx) => PasswordFormScreen(entry: entry), 
+			),
+		);
+	}
+
+	void _showDetailScreen(BuildContext context, PasswordEntry entry) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				builder: (ctx) => PasswordDetailScreen(entry: entry),
+			),
+		);
+	}
+
+	@override
+	Widget build(BuildContext context, WidgetRef ref) {
+		final listAsyncValue = ref.watch(passwordListProvider); 
+		final theme = Theme.of(context);
+		
+		Widget content;
+
+		content = listAsyncValue.when(
+			loading: () => const Center(child: CircularProgressIndicator()),
+			error: (err, stack) => Center(
+				child: Text('データのロードに失敗しました: $err'),
+			),
+			data: (entries) {
+				if (entries.isEmpty) {
+					return Center(
+						child: Column(
+							mainAxisAlignment: MainAxisAlignment.center,
+							children: [
+								Icon(Icons.lock_open, size: 80, color: Colors.grey.shade400),
+								const SizedBox(height: 16),
+								Text(
+									'まだパスワードが登録されていません',
+									style: theme.textTheme.titleMedium?.copyWith(color: Colors.grey.shade600),
+								),
+								const SizedBox(height: 8),
+								Text(
+									'右下の「+」ボタンから追加しましょう',
+									style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade500),
+								),
+							],
+						),
+					);
+				}
+				
+				return ListView.separated(
+					itemCount: entries.length,
+					separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+					itemBuilder: (context, index) {
+						final entry = entries[index];
+						
+						return Dismissible(
+							key: ValueKey(entry.id),
+							background: Container(
+								color: Colors.red,
+								alignment: Alignment.centerLeft,
+								padding: const EdgeInsets.symmetric(horizontal: 20),
+								child: const Icon(Icons.delete, color: Colors.white),
+							),
+							secondaryBackground: Container(
+								color: Colors.red,
+								alignment: Alignment.centerRight,
+								padding: const EdgeInsets.symmetric(horizontal: 20),
+								child: const Icon(Icons.delete, color: Colors.white),
+							),
+							confirmDismiss: (direction) async {
+								return await showDialog<bool>(
+									context: context,
+									builder: (ctx) => AlertDialog(
+										title: const Text('本当に削除しますか？'),
+										content: Text('${entry.title} のパスワードを削除します。'),
+										actions: <Widget>[
+											TextButton(
+												onPressed: () => Navigator.of(ctx).pop(false),
+												child: const Text('キャンセル'),
+											),
+											TextButton(
+												onPressed: () => Navigator.of(ctx).pop(true),
+												child: const Text('削除', style: TextStyle(color: Colors.red)),
+											),
+										],
+									),
+								);
+							},
+							onDismissed: (direction) {
+								ref.read(passwordListProvider.notifier).deletePassword(entry.id);
+								ScaffoldMessenger.of(context).showSnackBar(
+									SnackBar(content: Text('${entry.title} を削除しました'))
+								);
+							},
+							
+							child: ListTile(
+								leading: Icon(
+									Icons.vpn_key,
+									color: theme.colorScheme.primary,
+								),
+								title: Text(entry.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+								subtitle: Text(entry.username, style: TextStyle(color: Colors.grey.shade600)),
+								
+								trailing: Row(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										IconButton(
+											icon: const Icon(Icons.copy, size: 20),
+											onPressed: () => _copyToClipboard(context, entry.password),
+											tooltip: 'パスワードをコピー',
+										),
+										IconButton(
+											icon: const Icon(Icons.edit, size: 20),
+											onPressed: () => _editEntry(context, entry),
+											tooltip: '編集',
+										),
+										IconButton(
+											icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+											onPressed: () => _showDeleteConfirmationDialog(context, ref, entry),
+											tooltip: '削除',
+										),
+									],
+								),
+								
+								onTap: () => _showDetailScreen(context, entry), 
+							),
+						);
+					},
+				);
+			},
+		);
+
+		return Scaffold(
+			
+			body: content,
+		);
+	}
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------set_pin_screen.dart------------------------------
+
+// ファイルパス: lib/screens/set_pin_screen.dart
+// 役割: アプリ初回起動時、またはPIN未設定時にマスターPINを設定する画面
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+import '../providers/auth_provider.dart';
+
+class SetPinScreen extends ConsumerStatefulWidget {
+	const SetPinScreen({super.key});
+
+	@override
+	ConsumerState<SetPinScreen> createState() => _SetPinScreenState();
+}
+
+class _SetPinScreenState extends ConsumerState<SetPinScreen> {
+	final _pinController = TextEditingController();
+	final _confirmController = TextEditingController();
+	String _errorMessage = '';
+	bool _isLoading = false;
+
+	@override
+	void dispose() {
+		_pinController.dispose();
+		_confirmController.dispose();
+		super.dispose();
+	}
+
+	void _setPin() async {
+		if (_isLoading) return;
+
+		final pin = _pinController.text;
+		final confirmPin = _confirmController.text;
+
+		if (pin.length != 4) {
+			setState(() => _errorMessage = 'PINは4桁の数字で入力してください。');
+			return;
+		}
+		if (pin != confirmPin) {
+			setState(() => _errorMessage = 'PINが一致しません。');
+			return;
+		}
+
+		setState(() {
+			_isLoading = true;
+			_errorMessage = '';
+		});
+
+		try {
+			await ref.read(masterPinProvider.notifier).setPin(pin);
+			
+			ref.read(authProvider.notifier).login();
+		} catch (e) {
+			setState(() => _errorMessage = 'PIN設定中にエラーが発生しました: $e');
+		}
+
+		if (mounted) {
+			setState(() => _isLoading = false);
+		}
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		final theme = Theme.of(context);
+
+		return Scaffold(
+			appBar: AppBar(
+				title: const Text('マスターPINの設定'),
+				backgroundColor: theme.colorScheme.primary,
+				foregroundColor: Colors.white,
+			),
+			body: Center(
+				child: SingleChildScrollView(
+					padding: const EdgeInsets.all(32.0),
+					child: Column(
+						mainAxisAlignment: MainAxisAlignment.center,
+						crossAxisAlignment: CrossAxisAlignment.stretch,
+						children: <Widget>[
+							Text(
+								'セキュリティ強化のため、4桁のPINを設定してください。',
+								style: theme.textTheme.titleMedium,
+								textAlign: TextAlign.center,
+							),
+							const SizedBox(height: 32),
+
+							TextField(
+								controller: _pinController,
+								obscureText: true,
+								keyboardType: TextInputType.number,
+								maxLength: 4,
+								textAlign: TextAlign.center,
+								style: const TextStyle(fontSize: 24, letterSpacing: 8),
+								decoration: const InputDecoration(
+									labelText: '新しいPIN (4桁)',
+									counterText: '',
+									border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+								),
+							),
+							const SizedBox(height: 16),
+
+							TextField(
+								controller: _confirmController,
+								obscureText: true,
+								keyboardType: TextInputType.number,
+								maxLength: 4,
+								textAlign: TextAlign.center,
+								style: const TextStyle(fontSize: 24, letterSpacing: 8),
+								decoration: const InputDecoration(
+									labelText: 'PIN (確認用)',
+									counterText: '',
+									border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+								),
+							),
+							const SizedBox(height: 24),
+
+							if (_errorMessage.isNotEmpty)
+								Padding(
+									padding: const EdgeInsets.only(bottom: 16),
+									child: Text(
+										_errorMessage,
+										style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+										textAlign: TextAlign.center,
+									),
+								),
+
+							ElevatedButton(
+								onPressed: _isLoading ? null : _setPin,
+								style: ElevatedButton.styleFrom(
+									minimumSize: const Size(double.infinity, 50),
+									backgroundColor: theme.colorScheme.primary,
+									foregroundColor: theme.colorScheme.onPrimary,
+									shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+									elevation: 4,
+								),
+								child: _isLoading
+									? const SizedBox(
+										width: 24,
+										height: 24,
+										child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+									  )
+									: const Text('PINを設定して開始', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------settings_screen.dart------------------------------
+
+// ファイルパス: lib/screens/settings_screen.dart
+// 役割: 設定画面。PINの変更やログアウト（ロック）機能を提供する。
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+import '../providers/auth_provider.dart';
+
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  final _currentPinController = TextEditingController();
+  final _newPinController = TextEditingController();
+  final _confirmNewPinController = TextEditingController();
+  String _pinMessage = '';
+  
+  Future<void> _changePin() async {
+    final currentPin = _currentPinController.text;
+    final newPin = _newPinController.text;
+    final confirmPin = _confirmNewPinController.text;
+    
+    if (newPin.length != 4 || confirmPin.length != 4) {
+      setState(() => _pinMessage = '新しいPINは4桁の数字で入力してください。');
+      return;
+    }
+
+    if (newPin != confirmPin) {
+      setState(() => _pinMessage = '新しいPINと確認用PINが一致しません。');
+      return;
+    }
+    
+    final notifier = ref.read(masterPinProvider.notifier);
+    
+        final masterPinState = ref.read(masterPinProvider).value;
+        if (masterPinState == null || !masterPinState.isPinSet) {
+            setState(() => _pinMessage = 'PINが設定されていません。先に設定してください。');
+            return;
+        }
+
+    final isCurrentPinValid = notifier.checkCurrentPin(currentPin);
+    
+    if (!isCurrentPinValid) {
+      setState(() => _pinMessage = '現在のPINが間違っています。');
+      return;
+    }
+
+    await notifier.setPin(newPin); 
+
+    setState(() {
+      _pinMessage = 'PINが正常に更新されました！';
+      _currentPinController.clear();
+      _newPinController.clear();
+      _confirmNewPinController.clear();
+    });
+  }
+
+  void _logout() {
+    ref.read(authProvider.notifier).lockApp();
+    Navigator.of(context).pop();
+  }
+
+    void _showDeleteConfirmationDialog() {
+        final masterPinNotifier = ref.read(masterPinProvider.notifier);
+        final authNotifier = ref.read(authProvider.notifier);
+
+        showDialog(
+            context: context,
+            builder: (BuildContext dialogContext) {
+                return AlertDialog(
+                    title: const Text('本当にマスターPINを削除しますか？'),
+                    content: const Text(
+                        'この操作は取り消せません。\n\nPINを削除すると、アプリのセキュリティが低下し、次回起動時からPIN認証がスキップされます。続行しますか？',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                    ),
+                    actions: <Widget>[
+                        TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('キャンセル'),
+                        ),
+                        ElevatedButton(
+                            onPressed: () async {
+                                Navigator.of(dialogContext).pop(); 
+                                
+                                try {
+                                    await masterPinNotifier.clearPin();
+
+                                    if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('マスターPINが削除されました。次回起動時からPIN認証は行われません。')),
+                                        );
+                                    }
+                                    
+                                    authNotifier.lockApp();
+                                } catch (e) {
+                                    if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('PIN削除中にエラーが発生しました: ${e.toString()}')),
+                                        );
+                                    }
+                                }
+                            },
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                                foregroundColor: Colors.white,
+                                elevation: 4,
+                            ),
+                            child: const Text('PINを削除', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                    ],
+                );
+            },
+        );
+    }
+
+  @override
+  void dispose() {
+    _currentPinController.dispose();
+    _newPinController.dispose();
+    _confirmNewPinController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAuthenticated = ref.watch(authProvider);
+        
+        final masterPinAsyncValue = ref.watch(masterPinProvider);
+
+        return masterPinAsyncValue.when(
+            loading: () => Scaffold(
+                appBar: AppBar(title: const Text('設定')),
+                body: const Center(child: CircularProgressIndicator()),
+            ),
+            error: (err, stack) => Scaffold(
+                appBar: AppBar(title: const Text('設定')),
+                body: Center(child: Text('エラーが発生しました: $err')),
+            ),
+            data: (masterPinState) {
+                final isPinSet = masterPinState.isPinSet;
+
+                return Scaffold(
+                    appBar: AppBar(
+                        title: const Text('設定'),
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: Colors.white,
+                    ),
+                    body: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                                Text(
+                                    'マスターPINの変更',
+                                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                const Divider(height: 32),
+
+                                TextField(
+                                    controller: _currentPinController,
+                                    obscureText: true,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 4, 
+                                    decoration: const InputDecoration(
+                                        labelText: '現在のPIN (4桁)',
+                                        counterText: '',
+                                    ),
+                                ),
+                                const SizedBox(height: 16),
+                                
+                                TextField(
+                                    controller: _newPinController,
+                                    obscureText: true,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 4, 
+                                    decoration: const InputDecoration(
+                                        labelText: '新しいPIN (4桁)',
+                                        counterText: '',
+                                    ),
+                                ),
+                                const SizedBox(height: 16),
+
+                                TextField(
+                                    controller: _confirmNewPinController,
+                                    obscureText: true,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 4, 
+                                    decoration: const InputDecoration(
+                                        labelText: '新しいPIN (確認)',
+                                        counterText: '',
+                                    ),
+                                ),
+                                const SizedBox(height: 24),
+                                
+                                if (_pinMessage.isNotEmpty)
+                                    Padding(
+                                        padding: const EdgeInsets.only(bottom: 16),
+                                        child: Text(
+                                            _pinMessage,
+                                            style: TextStyle(color: _pinMessage.contains('正常') ? Colors.green : Colors.red, fontWeight: FontWeight.bold),
+                                        ),
+                                    ),
+
+                                ElevatedButton(
+                                    onPressed: _changePin,
+                                    style: ElevatedButton.styleFrom(
+                                        minimumSize: const Size(double.infinity, 50),
+                                        backgroundColor: theme.colorScheme.secondary,
+                                        foregroundColor: theme.colorScheme.onSecondary,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    child: const Text('PINを変更する'),
+                                ),
+                                
+                                const SizedBox(height: 40),
+
+                                Text(
+                                    'セキュリティ',
+                                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                const Divider(height: 32),
+                                
+                                if (isPinSet)
+                                    ListTile(
+                                        leading: const Icon(Icons.lock_reset, color: Colors.red),
+                                        title: const Text('マスターPINを削除'),
+                                        subtitle: const Text('PIN認証を無効化します'),
+                                        onTap: _showDeleteConfirmationDialog,
+                                    ),
+                                if (isPinSet) const Divider(),
+
+                                
+                                ListTile(
+                                    title: const Text('アプリをロック'),
+                                    subtitle: const Text('すぐに認証画面に戻ります'),
+                                    trailing: Icon(Icons.lock_outline, color: isAuthenticated ? theme.colorScheme.primary : Colors.grey),
+                                    onTap: isAuthenticated ? _logout : null,
+                                ),
+                            ],
+                        ),
+                    ),
+                );
+            },
+        );
+  }
+}
+
+------------------------------------------------------------------------------------------
+
+------------------------------setup_screen.dart------------------------------
+
+// ファイルパス: lib/screens/setup_screen.dart
+// 役割: 初回起動時のセットアップ（ここではマスターPIN設定を兼ねる）
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+
+class SetupScreen extends ConsumerStatefulWidget {
+	const SetupScreen({super.key});
+
+	@override
+	ConsumerState<SetupScreen> createState() => _SetupScreenState();
+}
+
+class _SetupScreenState extends ConsumerState<SetupScreen> {
+	final _pinController = TextEditingController();
+	final _confirmPinController = TextEditingController();
+	String _errorMessage = '';
+	bool _isLoading = false;
+
+	@override
+	void dispose() {
+		_pinController.dispose();
+		_confirmPinController.dispose();
+		super.dispose();
+	}
+
+	void _submitPinSetup() {
+		if (_isLoading) return;
+
+		final pin = _pinController.text;
+		final confirmPin = _confirmPinController.text;
+
+		if (pin.length != 4) {
+			setState(() => _errorMessage = 'PINは4桁の数字で入力してください。');
+			return;
+		}
+
+		if (pin != confirmPin) {
+			setState(() => _errorMessage = '確認用PINが一致しません。');
+			return;
+		}
+		
+		setState(() {
+			_isLoading = true;
+			_errorMessage = '';
+		});
+
+		try {
+			ref.read(masterPinProvider.notifier).setPin(pin);
+			
+		} catch (e) {
+			setState(() => _errorMessage = 'PIN設定中にエラーが発生しました: $e');
+		} finally {
+			if(mounted) {
+                setState(() => _isLoading = false);
+            }
+		}
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		final theme = Theme.of(context);
+		
+		return Scaffold(
+			body: Center(
+				child: SingleChildScrollView(
+					padding: const EdgeInsets.all(32.0),
+					child: Column(
+						mainAxisAlignment: MainAxisAlignment.center,
+						crossAxisAlignment: CrossAxisAlignment.stretch,
+						children: <Widget>[
+							Icon(Icons.security, size: 80, color: theme.colorScheme.primary),
+							const SizedBox(height: 16),
+							
+							Text(
+								'ようこそ！マスターPINを設定',
+								style: theme.textTheme.headlineMedium?.copyWith(
+									fontWeight: FontWeight.bold,
+									color: theme.colorScheme.primary,
+								),
+								textAlign: TextAlign.center,
+							),
+							const SizedBox(height: 16),
+							const Text(
+								'これはアプリケーションにロックをかけるために使用する、最も重要なPINです。',
+								style: TextStyle(fontSize: 14),
+								textAlign: TextAlign.center,
+							),
+							const SizedBox(height: 32),
+							
+							TextField(
+								controller: _pinController,
+								obscureText: true,
+								keyboardType: TextInputType.number,
+								maxLength: 4, 
+								textAlign: TextAlign.center,
+								style: const TextStyle(fontSize: 24, letterSpacing: 8),
+								decoration: const InputDecoration(
+									labelText: '4桁の新しいPIN',
+									counterText: '',
+									border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+									prefixIcon: Icon(Icons.vpn_key),
+								),
+							),
+							const SizedBox(height: 16),
+							
+							TextField(
+								controller: _confirmPinController,
+								obscureText: true,
+								keyboardType: TextInputType.number,
+								maxLength: 4, 
+								textAlign: TextAlign.center,
+								style: const TextStyle(fontSize: 24, letterSpacing: 8),
+								decoration: const InputDecoration(
+									labelText: '確認用PINコード',
+									counterText: '',
+									border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+									prefixIcon: Icon(Icons.check_circle_outline),
+								),
+							),
+							const SizedBox(height: 32),
+
+							if (_errorMessage.isNotEmpty)
+								Padding(
+									padding: const EdgeInsets.only(bottom: 16),
+									child: Text(
+										_errorMessage,
+										style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+										textAlign: TextAlign.center,
+									),
+								),
+
+							ElevatedButton(
+								onPressed: _isLoading ? null : _submitPinSetup,
+								style: ElevatedButton.styleFrom(
+									minimumSize: const Size(double.infinity, 50),
+									backgroundColor: theme.colorScheme.primary,
+									foregroundColor: theme.colorScheme.onPrimary,
+									shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+									elevation: 4,
+								),
+								child: _isLoading 
+									? const SizedBox(
+										width: 24,
+										height: 24,
+										child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+									  )
+									: const Text('PINを設定して開始', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+}
+
 ------------------------------------------------------------------------------------------
