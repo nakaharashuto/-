@@ -41,3 +41,5 @@ class PasswordEntry {
     return 'PasswordEntry(service: $serviceName, user: $username, encrypted: $encryptedPassword)';
   }
 }
+
+------------------------------------------------------------------------------------------
