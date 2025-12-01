@@ -51,7 +51,6 @@ class AuthNotifier extends StateNotifier<bool> {
     }
   }
   
-  // --- Auth Logic ---
 
   void login() {
     _lockTimer?.cancel();
@@ -87,7 +86,6 @@ final authProvider = StateNotifierProvider<AuthNotifier, bool>((ref) {
   final authService = ref.watch(authServiceProvider); 
   return AuthNotifier(authService); 
 });
-
 
 ------------------------------------------------------------------------------------------
 
