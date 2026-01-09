@@ -3,7 +3,7 @@ https://xgf.nu/Vrh3E
 https://xgf.nu/aT58d　←NEW
 https://xgf.nu/4MMSB　isar暗号化して保存
 ↑のpassword_provider.dartのdebugprintは削除する(アプリが完成されたらでOK)
-auth_screenとedit_screenとpassword_list_screenは最新版と書かれているものに張り替えてください
+auth_screenとadd_password_screenとedit_screenとpassword_list_screenは最新版と書かれているものに張り替えてください
 
 lib\
 	mosels\
