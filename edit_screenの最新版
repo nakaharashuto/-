@@ -1,0 +1,164 @@
+// ファイルパス: lib/screens/edit_screen.dart
+// 役割: 既存のパスワードエントリの詳細表示と編集
+
+import '../models/password_entry.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/password_provider.dart';
+
+class EditPasswordScreen extends ConsumerStatefulWidget {
+  final PasswordEntry entry;
+  
+  const EditPasswordScreen({required this.entry, super.key});
+
+  @override
+  ConsumerState<EditPasswordScreen> createState() => _EditPasswordScreenState();
+}
+
+class _EditPasswordScreenState extends ConsumerState<EditPasswordScreen> {
+  late TextEditingController _titleController;
+  late TextEditingController _usernameController;
+  late TextEditingController _passwordController;
+  late TextEditingController _urlController;
+  
+  final _formKey = GlobalKey<FormState>();
+  
+  bool _isPasswordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.entry.serviceName);
+    _usernameController = TextEditingController(text: widget.entry.username);
+    _passwordController = TextEditingController(text: widget.entry.encryptedPassword);
+    _urlController = TextEditingController(text: widget.entry.url);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _saveEntry() {
+    if (_formKey.currentState!.validate()) {
+      final updatedEntry = widget.entry.copyWith(
+        serviceName: _titleController.text,
+        username: _usernameController.text,
+        encryptedPassword: _passwordController.text,
+        url: _urlController.text,
+      );
+      
+      ref.read(passwordListProvider.notifier).updatePassword(updatedEntry); 
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('パスワードエントリを更新しました。')),
+      );
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.entry.serviceName} の編集'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        actions: [
+          IconButton(
+            onPressed: _saveEntry,
+            icon: const Icon(Icons.save),
+            tooltip: '保存',
+          )
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'タイトル (例: Google, 銀行)',
+                  prefixIcon: Icon(Icons.title),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'タイトルは必須です';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'ユーザー名 / メールアドレス',
+                  prefixIcon: Icon(Icons.person),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _passwordController,
+                obscureText: !_isPasswordVisible,
+                decoration: InputDecoration(
+                  labelText: 'パスワード',
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'パスワードは必須です';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _urlController,
+                decoration: const InputDecoration(
+                  labelText: 'URL / ウェブサイト',
+                  prefixIcon: Icon(Icons.link),
+                ),
+                keyboardType: TextInputType.url,
+              ),
+
+              const SizedBox(height: 30),
+
+              ElevatedButton.icon(
+                onPressed: _saveEntry,
+                icon: const Icon(Icons.save),
+                label: const Text('変更を保存'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
