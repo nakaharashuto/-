@@ -1,15 +1,13 @@
+// ファイルパス: lib/screens/password_detail_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/password_entry.dart';
 import '../providers/password_provider.dart';
-import '../providers/auth_provider.dart';
 import '../providers/master_pin_provider.dart';
 
-// -------------------------------------------------------------------------
-// 1. PasswordDetailScreen (詳細表示・削除画面)
-// -------------------------------------------------------------------------
 class PasswordDetailScreen extends ConsumerStatefulWidget {
   final PasswordEntry entry;
 
@@ -22,73 +20,42 @@ class PasswordDetailScreen extends ConsumerStatefulWidget {
 class _PasswordDetailScreenState extends ConsumerState<PasswordDetailScreen> {
   bool _isPasswordVisible = false;
 
-  // 認証処理
-  Future<bool> _authenticate() async {
-    final authService = ref.read(authServiceProvider);
-    try {
-      final isAvailable = await authService.isBiometricsAvailable();
-      if (isAvailable) {
-        final authenticated = await authService.authenticate();
-        if (authenticated) return true;
-      }
-    } catch (e) {
-      debugPrint('Authentication Error: $e');
-    }
-
-    if (!mounted) return false;
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const PinReAuthDialog(),
-    );
-    return result ?? false;
-  }
-
-  // コピー処理
   void _copyToClipboard(String text, String label) async {
-    if (label == 'パスワード' && !_isPasswordVisible) {
-      final authenticated = await _authenticate();
-      if (!authenticated) return;
-    }
-
     await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$labelをコピーしました')),
-      );
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$labelをコピーしました')),
+    );
   }
 
-  // 削除処理
-  Future<void> _deleteEntry() async {
-    final confirm = await showDialog<bool>(
+  Future<void> _confirmDelete(PasswordEntry entry) async {
+    final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('削除の確認'),
-        content: Text('「${widget.entry.serviceName}」を削除してもよろしいですか？'),
+        content: Text('${entry.serviceName} の情報を削除しますか？\nこの操作は取り消せません。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('キャンセル'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('削除する'),
+            child: const Text('削除'),
           ),
         ],
       ),
     );
 
     if (confirm == true) {
-      // パスワードを削除（Provider経由でDBから削除）
-      await ref.read(passwordListProvider.notifier).deletePassword(widget.entry.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('削除しました')),
-        );
-        Navigator.pop(context); // 一覧画面に戻る
-      }
+      await ref.read(passwordListProvider.notifier).deletePassword(entry.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('削除しました')));
+      Navigator.of(context).pop(); 
     }
   }
 
@@ -103,31 +70,20 @@ class _PasswordDetailScreenState extends ConsumerState<PasswordDetailScreen> {
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: Colors.white,
         actions: [
-          // 削除ボタンを追加
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: _deleteEntry,
-            tooltip: '削除',
+            onPressed: () => _confirmDelete(entry),
           ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildDetailItem(theme, Icons.title, 'サービス名', entry.serviceName),
             _buildDetailItem(theme, Icons.person, 'ユーザー名', entry.username),
             _buildPasswordItem(theme),
             _buildDetailItem(theme, Icons.link, 'URL', entry.url),
-            Card(
-              margin: const EdgeInsets.symmetric(vertical: 8.0),
-              child: ListTile(
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('作成日'),
-                subtitle: Text('${entry.createdAt.year}/${entry.createdAt.month}/${entry.createdAt.day}'),
-              ),
-            ),
           ],
         ),
       ),
@@ -136,7 +92,6 @@ class _PasswordDetailScreenState extends ConsumerState<PasswordDetailScreen> {
 
   Widget _buildDetailItem(ThemeData theme, IconData icon, String title, String value) {
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
       child: ListTile(
         leading: Icon(icon, color: theme.colorScheme.primary),
         title: Text(title),
@@ -151,30 +106,16 @@ class _PasswordDetailScreenState extends ConsumerState<PasswordDetailScreen> {
 
   Widget _buildPasswordItem(ThemeData theme) {
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
-      elevation: 2,
       child: ListTile(
         leading: Icon(Icons.lock, color: theme.colorScheme.primary),
         title: const Text('パスワード'),
-        subtitle: Text(
-          _isPasswordVisible ? widget.entry.encryptedPassword : '••••••••',
-          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
-        ),
+        subtitle: Text(_isPasswordVisible ? widget.entry.encryptedPassword : '••••••••'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
               icon: Icon(_isPasswordVisible ? Icons.visibility_off : Icons.visibility),
-              onPressed: () async {
-                if (_isPasswordVisible) {
-                  setState(() => _isPasswordVisible = false);
-                } else {
-                  final authenticated = await _authenticate();
-                  if (authenticated) {
-                    setState(() => _isPasswordVisible = true);
-                  }
-                }
-              },
+              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
             ),
             IconButton(
               icon: const Icon(Icons.copy),
@@ -187,12 +128,9 @@ class _PasswordDetailScreenState extends ConsumerState<PasswordDetailScreen> {
   }
 }
 
-// -------------------------------------------------------------------------
-// 2. PinReAuthDialog (PIN再認証ダイアログ)
-// -------------------------------------------------------------------------
+// 詳細画面への遷移前の認証で使うため、ここに配置
 class PinReAuthDialog extends ConsumerStatefulWidget {
   const PinReAuthDialog({super.key});
-
   @override
   ConsumerState<PinReAuthDialog> createState() => _PinReAuthDialogState();
 }
@@ -223,82 +161,19 @@ class _PinReAuthDialogState extends ConsumerState<PinReAuthDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('認証'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('マスターPINを入力してください'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            autofocus: true,
-            textAlign: TextAlign.center,
-            decoration: InputDecoration(
-              errorText: _error,
-              counterText: '',
-              border: const OutlineInputBorder(),
-            ),
-            onSubmitted: (_) => _verify(),
-          ),
-        ],
+      content: TextField(
+        controller: _controller,
+        obscureText: true,
+        keyboardType: TextInputType.number,
+        maxLength: 4,
+        autofocus: true,
+        decoration: InputDecoration(errorText: _error, counterText: ''),
+        onSubmitted: (_) => _verify(),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('キャンセル')),
         ElevatedButton(onPressed: _verify, child: const Text('確認')),
       ],
-    );
-  }
-}
-
-// -------------------------------------------------------------------------
-// 3. PasswordListScreen (一覧画面)
-// -------------------------------------------------------------------------
-class PasswordListScreen extends ConsumerWidget {
-  const PasswordListScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final passwordListAsync = ref.watch(passwordListProvider);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('パスワードマネージャー'),
-      ),
-      body: passwordListAsync.when(
-        data: (passwords) => passwords.isEmpty
-            ? const Center(child: Text('データがありません'))
-            : ListView.builder(
-                itemCount: passwords.length,
-                itemBuilder: (context, index) {
-                  final entry = passwords[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: ListTile(
-                      title: Text(entry.serviceName),
-                      subtitle: Text(entry.username),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PasswordDetailScreen(entry: entry),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                },
-              ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('エラーが発生しました: $err')),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-        },
-        child: const Icon(Icons.add),
-      ),
     );
   }
 }
