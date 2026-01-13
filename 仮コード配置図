@@ -5,6 +5,7 @@ https://xgf.nu/4MMSB　isar暗号化して保存
 ↑のpassword_provider.dartのdebugprintは削除する(アプリが完成されたらでOK)
 auth_screen,add_password_screen,edit_screen,password_list_screenは最新版と書かれているものに張り替えてください
 新しくpassword_detail_screenを作成してください
+↑をしたのがこれ→https://xgf.nu/SgwRD
 
 lib\
 	mosels\
