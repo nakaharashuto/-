@@ -1,0 +1,174 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+import '../providers/auth_provider.dart';
+
+class SetPinScreen extends ConsumerStatefulWidget {
+  const SetPinScreen({super.key});
+
+  @override
+  ConsumerState<SetPinScreen> createState() => _SetPinScreenState();
+}
+
+class _SetPinScreenState extends ConsumerState<SetPinScreen> {
+  final _pinController = TextEditingController();
+  final _confirmController = TextEditingController();
+  // 💡 追加：質問と答えのコントローラー
+  final _questionController = TextEditingController();
+  final _answerController = TextEditingController();
+  
+  String _errorMessage = '';
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    _confirmController.dispose();
+    _questionController.dispose(); // 💡 追加
+    _answerController.dispose();   // 💡 追加
+    super.dispose();
+  }
+
+  void _setPin() async {
+    if (_isLoading) return;
+
+    final pin = _pinController.text;
+    final confirmPin = _confirmController.text;
+    final question = _questionController.text; // 💡 追加
+    final answer = _answerController.text;     // 💡 追加
+
+    // バリデーション
+    if (pin.length != 4) {
+      setState(() => _errorMessage = 'PINは4桁の数字で入力してください。');
+      return;
+    }
+    if (pin != confirmPin) {
+      setState(() => _errorMessage = 'PINが一致しません。');
+      return;
+    }
+    // 💡 質問と答えが空でないかチェック
+    if (question.isEmpty || answer.isEmpty) {
+      setState(() => _errorMessage = '秘密の質問と答えを入力してください。');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // 💡 修正：新しいメソッド setPinWithRecovery を呼び出す
+      await ref.read(masterPinProvider.notifier).setPinWithRecovery(
+        pin: pin,
+        question: question,
+        answer: answer,
+      );
+      
+      ref.read(authProvider.notifier).login();
+    } catch (e) {
+      setState(() => _errorMessage = '設定中にエラーが発生しました: $e');
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('初期設定'),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                'マスターPINと、忘れた時のための\n秘密の質問を設定してください。',
+                style: theme.textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // PIN入力
+              TextField(
+                controller: _pinController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  labelText: '新しいPIN (4桁)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _confirmController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  labelText: 'PIN (確認用)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              
+              const Divider(height: 48),
+
+              // 💡 追加：秘密の質問入力
+              TextField(
+                controller: _questionController,
+                decoration: const InputDecoration(
+                  labelText: '秘密の質問 (例: 最初のペットの名前は？)',
+                  hintText: '忘れた時に表示される質問です',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _answerController,
+                decoration: const InputDecoration(
+                  labelText: '質問の答え',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+
+              if (_errorMessage.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    _errorMessage,
+                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+              ElevatedButton(
+                onPressed: _isLoading ? null : _setPin,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                ),
+                child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : const Text('設定を保存して開始'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
