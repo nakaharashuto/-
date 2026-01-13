@@ -1,11 +1,6 @@
 ギガファイル便のURL
-https://xgf.nu/Vrh3E
-https://xgf.nu/aT58d　←NEW
-https://xgf.nu/4MMSB　isar暗号化して保存
-↑のpassword_provider.dartのdebugprintは削除する(アプリが完成されたらでOK)
-auth_screen,add_password_screen,edit_screen,password_list_screenは最新版と書かれているものに張り替えてください
-新しくpassword_detail_screenを作成してください
-↑をしたのがこれ→https://xgf.nu/SgwRD
+https://xgf.nu/SgwRD
+↑にmaster_pin_provider,auth_screen,set_pin_screen,settings_screen,setup_screenの最新版と書かれているものに置き換えてください
 
 lib\
 	mosels\
