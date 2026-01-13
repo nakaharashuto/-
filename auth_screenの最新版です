@@ -241,6 +241,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       errorText: dialogError,
                     ),
                   ),
+                  /*
                   const SizedBox(height: 32),
                   const Divider(),
                   const Text('答えも忘れてしまいましたか？', style: TextStyle(fontSize: 12, color: Colors.grey)),
@@ -249,6 +250,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     style: TextButton.styleFrom(foregroundColor: Colors.red),
                     child: const Text('全ての認証設定を削除する'),
                   ),
+                  */
                 ],
               ),
             ),
@@ -280,6 +282,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
+  /*
   // 最終手段のリセット確認（警告解消版）
   void _showResetConfirmation(BuildContext context) {
     showDialog(
@@ -315,6 +318,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ),
     );
   }
+  */
 
   @override
   Widget build(BuildContext context) {
