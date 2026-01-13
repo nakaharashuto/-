@@ -1,0 +1,54 @@
+// ファイルパス: lib/widgets/pin_reauth_dialog.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+
+class PinReAuthDialog extends ConsumerStatefulWidget {
+  const PinReAuthDialog({super.key});
+  @override
+  ConsumerState<PinReAuthDialog> createState() => _PinReAuthDialogState();
+}
+
+class _PinReAuthDialogState extends ConsumerState<PinReAuthDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  void _verify() {
+    final masterPinValue = ref.read(masterPinProvider).value;
+    if (masterPinValue != null && masterPinValue.masterPin == _controller.text) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _error = 'PINが正しくありません';
+        _controller.clear();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('認証'),
+      content: TextField(
+        controller: _controller,
+        obscureText: true,
+        keyboardType: TextInputType.number,
+        maxLength: 4,
+        autofocus: true,
+        decoration: InputDecoration(errorText: _error, counterText: ''),
+        onSubmitted: (_) => _verify(),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('キャンセル')),
+        ElevatedButton(onPressed: _verify, child: const Text('確認')),
+      ],
+    );
+  }
+}
