@@ -1,0 +1,81 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
+
+class MasterPinState {
+  final String? masterPin;
+  final String? recoveryQuestion; // 💡 追加
+  final String? recoveryAnswer;   // 💡 追加
+  final bool isPinSet;
+
+  MasterPinState({
+    this.masterPin,
+    this.recoveryQuestion,
+    this.recoveryAnswer,
+  }) : isPinSet = masterPin != null;
+}
+
+class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
+  static const _pinKey = 'master_pin_secure';
+  static const _questionKey = 'recovery_question_secure'; // 💡 追加
+  static const _answerKey = 'recovery_answer_secure';     // 💡 追加
+  
+  final _secureStorage = const FlutterSecureStorage();
+
+  @override
+  Future<MasterPinState> build() async {
+    // 💡 全てのデータを読み込む
+    final pin = await _secureStorage.read(key: _pinKey);
+    final question = await _secureStorage.read(key: _questionKey);
+    final answer = await _secureStorage.read(key: _answerKey);
+
+    return MasterPinState(
+      masterPin: pin,
+      recoveryQuestion: question,
+      recoveryAnswer: answer,
+    );
+  }
+  
+  // 💡 PIN、質問、答えをセットで保存するように変更
+  Future<void> setPinWithRecovery({
+    required String pin,
+    required String question,
+    required String answer,
+  }) async {
+    if (state.isLoading) return; 
+    
+    await _secureStorage.write(key: _pinKey, value: pin);
+    await _secureStorage.write(key: _questionKey, value: question);
+    await _secureStorage.write(key: _answerKey, value: answer);
+    
+    state = AsyncData(MasterPinState(
+      masterPin: pin,
+      recoveryQuestion: question,
+      recoveryAnswer: answer,
+    ));
+    debugPrint('MasterPinNotifier: PINと秘密の質問が保存されました。');
+  }
+
+  // 💡 全データを削除（初期化用）
+  Future<void> clearAll() async {
+    if (state.isLoading) return;
+    await _secureStorage.deleteAll(); // 全てのキーを削除
+    state = AsyncData(MasterPinState(masterPin: null));
+  }
+
+  bool checkCurrentPin(String pin) {
+    final currentPinState = state.value;
+    return currentPinState?.masterPin == pin;
+  }
+
+  // 💡 秘密の質問の答えが合っているかチェックするメソッド
+  bool checkRecoveryAnswer(String answer) {
+    final currentPinState = state.value;
+    // 空白や大文字小文字の差を無視して比較するとユーザーに優しいです
+    return currentPinState?.recoveryAnswer?.trim() == answer.trim();
+  }
+}
+
+final masterPinProvider = AsyncNotifierProvider<MasterPinNotifier, MasterPinState>(() {
+  return MasterPinNotifier();
+});
