@@ -1,0 +1,274 @@
+// ファイルパス: lib/screens/settings_screen.dart
+// 役割: 設定画面。PINの変更やログアウト（ロック）機能を提供する。
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/master_pin_provider.dart';
+import '../providers/auth_provider.dart';
+
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  final _currentPinController = TextEditingController();
+  final _newPinController = TextEditingController();
+  final _confirmNewPinController = TextEditingController();
+  // 💡 追加: 秘密の質問と答えのコントローラー
+  final _questionController = TextEditingController();
+  final _answerController = TextEditingController();
+  
+  String _pinMessage = '';
+  
+  @override
+  void dispose() {
+    _currentPinController.dispose();
+    _newPinController.dispose();
+    _confirmNewPinController.dispose();
+    _questionController.dispose();
+    _answerController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _changePin() async {
+    final currentPin = _currentPinController.text;
+    final newPin = _newPinController.text;
+    final confirmPin = _confirmNewPinController.text;
+    final question = _questionController.text;
+    final answer = _answerController.text;
+    
+    if (newPin.length != 4 || confirmPin.length != 4) {
+      setState(() => _pinMessage = '新しいPINは4桁の数字で入力してください。');
+      return;
+    }
+
+    if (newPin != confirmPin) {
+      setState(() => _pinMessage = '新しいPINと確認用PINが一致しません。');
+      return;
+    }
+
+    // 💡 追加: 質問と答えのバリデーション
+    if (question.isEmpty || answer.isEmpty) {
+      setState(() => _pinMessage = '秘密の質問と答えを入力してください。');
+      return;
+    }
+    
+    final notifier = ref.read(masterPinProvider.notifier);
+    final masterPinState = ref.read(masterPinProvider).value;
+    
+    if (masterPinState == null || !masterPinState.isPinSet) {
+      setState(() => _pinMessage = 'PINが設定されていません。先に設定してください。');
+      return;
+    }
+
+    final isCurrentPinValid = notifier.checkCurrentPin(currentPin);
+    
+    if (!isCurrentPinValid) {
+      setState(() => _pinMessage = '現在のPINが間違っています。');
+      return;
+    }
+
+    // 💡 修正: setPinWithRecovery を使用して全てのデータを更新
+    await notifier.setPinWithRecovery(
+      pin: newPin,
+      question: question,
+      answer: answer,
+    ); 
+
+    setState(() {
+      _pinMessage = 'PINと秘密の質問が正常に更新されました！';
+      _currentPinController.clear();
+      _newPinController.clear();
+      _confirmNewPinController.clear();
+      _questionController.clear();
+      _answerController.clear();
+    });
+  }
+
+  void _logout() {
+    ref.read(authProvider.notifier).lockApp();
+    Navigator.of(context).pop();
+  }
+
+  void _showDeleteConfirmationDialog() {
+    final masterPinNotifier = ref.read(masterPinProvider.notifier);
+    final authNotifier = ref.read(authProvider.notifier);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('本当にマスターPINを削除しますか？'),
+          content: const Text(
+            'この操作は取り消せません。\n\nPINと秘密の質問が削除され、次回起動時から認証がスキップされます。続行しますか？',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('キャンセル'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop(); 
+                try {
+                  // 💡 修正: clearAll メソッドを呼び出す
+                  await masterPinNotifier.clearAll();
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('全ての認証設定が削除されました。')),
+                    );
+                  }
+                  authNotifier.lockApp();
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('削除中にエラーが発生しました: $e')),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('削除を実行'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAuthenticated = ref.watch(authProvider);
+    final masterPinAsyncValue = ref.watch(masterPinProvider);
+
+    return masterPinAsyncValue.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (err, stack) => Scaffold(body: Center(child: Text('エラー: $err'))),
+      data: (masterPinState) {
+        final isPinSet = masterPinState.isPinSet;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('設定'),
+            backgroundColor: theme.colorScheme.primary,
+            foregroundColor: Colors.white,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'マスターPIN・秘密の質問の変更',
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                
+                // PIN入力セクション
+                TextField(
+                  controller: _currentPinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4, 
+                  decoration: const InputDecoration(labelText: '現在のPIN (4桁)', counterText: ''),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _newPinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4, 
+                  decoration: const InputDecoration(labelText: '新しいPIN (4桁)', counterText: ''),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _confirmNewPinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4, 
+                  decoration: const InputDecoration(labelText: '新しいPIN (確認)', counterText: ''),
+                ),
+                
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                  child: Divider(),
+                ),
+
+                // 💡 追加: 秘密の質問入力セクション
+                TextField(
+                  controller: _questionController,
+                  decoration: const InputDecoration(
+                    labelText: '新しい秘密の質問',
+                    hintText: '例: 最初のペットの名前は？',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _answerController,
+                  decoration: const InputDecoration(
+                    labelText: '質問の答え',
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                if (_pinMessage.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      _pinMessage,
+                      style: TextStyle(
+                        color: _pinMessage.contains('成功') || _pinMessage.contains('正常') ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                ElevatedButton(
+                  onPressed: _changePin,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    backgroundColor: theme.colorScheme.secondary,
+                    foregroundColor: theme.colorScheme.onSecondary,
+                  ),
+                  child: const Text('設定を更新する'),
+                ),
+                
+                const SizedBox(height: 40),
+
+                Text(
+                  'セキュリティ',
+                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const Divider(),
+                
+                if (isPinSet)
+                  ListTile(
+                    leading: const Icon(Icons.lock_reset, color: Colors.red),
+                    title: const Text('マスターPINと質問を削除'),
+                    subtitle: const Text('認証設定をすべて初期化します'),
+                    onTap: _showDeleteConfirmationDialog,
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.lock_outline),
+                  title: const Text('アプリをロック'),
+                  subtitle: const Text('認証画面に戻ります'),
+                  onTap: isAuthenticated ? _logout : null,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
