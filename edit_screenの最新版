@@ -68,13 +68,7 @@ class _EditPasswordScreenState extends ConsumerState<EditPasswordScreen> {
         title: Text('${widget.entry.serviceName} の編集'),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        actions: [
-          IconButton(
-            onPressed: _saveEntry,
-            icon: const Icon(Icons.save),
-            tooltip: '保存',
-          )
-        ],
+        // 💡 修正: actionsプロパティ（右上の保存ボタン）を削除しました
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
