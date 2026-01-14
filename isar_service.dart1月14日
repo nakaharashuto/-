@@ -1,0 +1,140 @@
+// ファイルパス: lib/services/isar_service.dart
+import 'dart:async'; // 💡 これを追加
+import 'package:flutter/foundation.dart'; // 💡 これを追加
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
+//import 'package:encrypt/encrypt.dart'; // 💡 追加
+import 'package:encrypt/encrypt.dart' as crypto; //tuika
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // 💡 追加
+import '../models/password_entry.dart';
+
+class IsarService {
+  late Future<Isar> db;
+  // 💡 追加: Secure Storage のインスタンス
+  final _secureStorage = const FlutterSecureStorage();
+  // 💡 追加: Encrypter を nullable に変更し、初期化後に設定
+  crypto.Encrypter? _encrypter; 
+  IsarService() {
+    db = openIsar();
+    // 初期化を確実に終わらせるための工夫
+    _init();
+  }
+  // 初期化待ちのための Completer
+  final _initCompleter = Completer<void>();
+  Future<void> _ensureInitialized() => _initCompleter.future;
+
+  Future<void> _init() async {
+    await _initializeEncryption();
+    _initCompleter.complete();
+  }
+
+// 復号化ヘルパー (メソッド化)
+// 💡 復号化ヘルパー：引数に ivBase64 を追加
+  String _decrypt(String encryptedBase64, String ivBase64) {
+    if (_encrypter == null) throw Exception('Encryption keys not initialized.');
+    if (encryptedBase64.isEmpty || ivBase64.isEmpty) return '';
+    try {
+      final encrypted = crypto.Encrypted.fromBase64(encryptedBase64);
+      final iv = crypto.IV.fromBase64(ivBase64); // 💡 保存されたIVを復元
+      return _encrypter!.decrypt(encrypted, iv: iv);
+    } catch (e) {
+      debugPrint('Decryption error: $e');
+      return '*** Decryption Failed ***';
+    }
+  }
+
+// 💡 暗号化キーの初期化と取得
+Future<void> _initializeEncryption() async {
+    String? keyStr = await _secureStorage.read(key: 'aesKey');
+    crypto.Key key;
+
+    if (keyStr == null) {
+      key = crypto.Key.fromLength(32);
+      await _secureStorage.write(key: 'aesKey', value: key.base64);
+      // 💡 クラス共通のIVをSecureStorageに保存する必要はなくなりました
+      //（各エントリが独自のIVを持つため）
+    } else {
+      key = crypto.Key.fromBase64(keyStr);
+    }
+
+    _encrypter = crypto.Encrypter(crypto.AES(key, mode: crypto.AESMode.cbc));
+  }
+
+  // --- Isarの初期化 ---
+  Future<Isar> openIsar() async {
+    if (Isar.instanceNames.isEmpty) {
+      final dir = await getApplicationSupportDirectory();
+      return await Isar.open(
+        [PasswordEntrySchema], // 定義したモデルのスキーマ
+        directory: dir.path,
+        inspector: true, // デバッグ用
+      );
+    }
+    // 既に開かれている場合はそのインスタンスを返す
+    return Future.value(Isar.getInstance());
+  }
+
+  // --- CRUD操作 ---
+
+  // 全てのエントリを取得 (Read)
+  Future<List<PasswordEntry>> getAllPasswords() async {
+    await _ensureInitialized();
+    final isar = await db;
+
+    final encryptedEntries = await isar.passwordEntrys
+        .where()
+        .sortByCreatedAtDesc()
+        .findAll();
+        
+    return encryptedEntries.map((entry) {
+      if (entry.encryptedPassword.isNotEmpty && entry.ivBase64.isNotEmpty) {
+        // 💡 修正：保存されている個別のIVを渡す
+        final decrypted = _decrypt(entry.encryptedPassword, entry.ivBase64);
+        return entry.copyWith(encryptedPassword: decrypted); 
+      }
+      return entry.copyWith(); 
+    }).toList();
+  }
+
+  // エントリを保存/更新 (Create/Update)
+  Future<void> savePassword(PasswordEntry entry, String plainPassword) async {
+    await _ensureInitialized();
+    
+    // 💡 OK: 新しいIVをランダム生成
+    final newIv = crypto.IV.fromLength(16); 
+    final encrypted = _encrypter!.encrypt(plainPassword, iv: newIv);
+
+    final entryToSave = entry.copyWith(
+      encryptedPassword: encrypted.base64,
+      ivBase64: newIv.base64, // 💡 IVを保存
+      updatedAt: DateTime.now(),
+    );
+
+    final isar = await db;
+    await isar.writeTxn(() async {
+      await isar.passwordEntrys.put(entryToSave);
+    });
+  }
+
+  // エントリを削除 (Delete)
+  Future<void> deletePassword(String id) async {
+    final isar = await db;
+    
+    // 1. 💡 外部 ID (String) から Isar ID (int) を計算
+    final int isarIdToDelete = PasswordEntry.fastHash(id); // 💡 static メソッドを呼び出す
+    
+    await isar.writeTxn(() async {
+        // 2. 💡 【修正】delete() に計算した Id (int) を渡す
+        // 戻り値は bool (削除成功/失敗)
+        final success = await isar.passwordEntrys.delete(isarIdToDelete);
+        
+        if (!success) {
+            debugPrint('Failed to delete Isar entry with Isar ID: $isarIdToDelete');
+        }
+    });
+}
+
+}
+// 外部から利用するためのシングルトンプロバイダ
+final isarServiceProvider = Provider((ref) => IsarService());
