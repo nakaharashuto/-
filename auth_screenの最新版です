@@ -266,7 +266,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   
                   if (isCorrect) {
                     Navigator.pop(context);
-                    Navigator.of(context).push(
+                    Navigator.of(context).pushReplacement(
                       MaterialPageRoute(builder: (_) => const SetPinScreen()),
                     );
                   } else {
