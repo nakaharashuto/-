@@ -1,0 +1,66 @@
+// ファイルパス: lib/services/auth_service.dart
+// 役割: 生体認証（Local Authentication）のロジックを管理するサービス
+
+import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart'; // 実際の生体認証ライブラリをインポート
+
+class AuthService {
+	// Local Authenticationのインスタンス
+	final LocalAuthentication _auth = LocalAuthentication();
+
+	/// ⚠️ 修正: メソッド名をAuthScreenの利用目的に合わせてより明確にしました。
+	/// 生体認証が利用可能か、かつデバイスに設定されているかチェックします。
+	Future<bool> isBiometricsAvailable() async {
+		debugPrint("AuthService: 生体認証が利用可能かチェック中...");
+		try {
+			// 1. デバイスが生体認証をサポートしているか
+			final bool canCheck = await _auth.canCheckBiometrics;
+			if (!canCheck) {
+				debugPrint("AuthService: デバイスが生体認証をサポートしていません。");
+				return false;
+			}
+			
+			// 2. 登録されている生体認証があるか
+			final List<BiometricType> availableBiometrics = await _auth.getAvailableBiometrics();
+			
+			// デバイスがサポートし、かつ生体認証が一つ以上登録されていればtrue
+			return availableBiometrics.isNotEmpty;
+			
+		} catch (e) {
+			debugPrint("AuthService Error in isBiometricsAvailable: $e");
+			return false;
+		}
+	}
+
+	/// 認証を実行します。
+	Future<bool> authenticate() async {
+		debugPrint("AuthService: 生体認証を実行中...");
+		
+		// ⚠️ 修正: 認証前に再度利用可能かチェック（不要な認証ダイアログ表示を防ぐ）
+		final isAvailable = await isBiometricsAvailable();
+		if (!isAvailable) {
+			debugPrint("AuthService: 生体認証は利用できません。認証をスキップ。");
+			return false;
+		}
+
+		try {
+			final bool authenticated = await _auth.authenticate(
+				localizedReason: 'アプリにアクセスするには、指紋または顔認証が必要です。', // 認証ダイアログのメッセージ
+				options: const AuthenticationOptions(
+					stickyAuth: true, // アプリがバックグラウンドに行っても認証状態を維持
+					biometricOnly: true, // 生体認証のみを要求（Android/iOSでPINフォールバックを防ぐ）
+					// useErrorDialogs: false, // 認証失敗時のOS標準ダイアログを抑制する場合
+				),
+			);
+			
+			debugPrint("AuthService: 認証結果: $authenticated");
+			return authenticated;
+			
+		} on Exception catch (e) {
+			// 例外処理（ユーザーがキャンセル、デバイスに問題など）
+			debugPrint("AuthService Error in authenticate: $e");
+			// LocalAuthの特定のエラーコードを処理することで、より詳細なメッセージを返せるが、ここではシンプルにfalseを返す
+			return false;
+		}
+	}
+}
