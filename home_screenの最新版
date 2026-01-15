@@ -1,0 +1,101 @@
+// ファイルパス: lib/screens/home_screen.dart
+// 役割: メインコンテンツ画面（TabBarとAppBarを含む）。AuthWrapperから分離されたもの。
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart'; 
+import 'password_list_screen.dart';
+import 'generate_screen.dart';
+// ⚠️ 修正: クラス名が変更されたファイル（現在はPasswordFormScreen）をインポート
+import 'add_password_screen.dart'; // クラス名: PasswordFormScreen
+import 'settings_screen.dart';
+
+class HomeScreen extends ConsumerWidget {
+	const HomeScreen({super.key});
+
+	void _navigateToAddPasswordScreen(BuildContext context) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				// ⚠️ 修正: 遷移先をPasswordFormScreenに変更 (新規追加モードのためentryはnull)
+				builder: (context) => const PasswordFormScreen(), 
+			),
+		);
+	}
+	
+	void _navigateToSettingsScreen(BuildContext context) {
+		Navigator.of(context).push(
+			MaterialPageRoute(
+				builder: (context) => const SettingsScreen(),
+			),
+		);
+	}
+
+	@override
+	Widget build(BuildContext context, WidgetRef ref) {
+		void lockApp() {
+			ref.read(authProvider.notifier).lockApp();
+		}
+		
+		final theme = Theme.of(context);
+
+		return DefaultTabController(
+			key: const ValueKey('MainAppScreen'),
+			length: 2,
+			child: Builder(
+				builder: (context) {
+					final TabController tabController = DefaultTabController.of(context);
+					
+					return ListenableBuilder(
+						listenable: tabController,
+						builder: (context, child) {
+							final int currentIndex = tabController.index; 
+							
+							return Scaffold(
+								appBar: AppBar( 
+									title: const Text('パスワードマネージャー'), 
+									backgroundColor: theme.colorScheme.primary,
+									foregroundColor: Colors.white,
+									actions: [
+										IconButton(
+											icon: const Icon(Icons.settings),
+											tooltip: '設定',
+											onPressed: () => _navigateToSettingsScreen(context),
+										),
+										IconButton(
+											icon: const Icon(Icons.lock_outline),
+											tooltip: 'アプリをロック',
+											onPressed: lockApp, 
+										),
+									],
+									bottom: const TabBar(
+										labelColor: Colors.white,
+										unselectedLabelColor: Colors.white70,
+										tabs: [
+											Tab(icon: Icon(Icons.lock_open), text: 'パスワード管理'),
+											Tab(icon: Icon(Icons.vpn_key), text: 'パスワード生成'),
+										],
+									),
+								),
+								body: const TabBarView(
+									children: [
+										PasswordListScreen(), 
+										GenerateScreen(),
+									],
+								),
+								
+								floatingActionButton: currentIndex == 0
+									? FloatingActionButton(
+										heroTag: 'addPasswordButtonHome',
+										onPressed: () => _navigateToAddPasswordScreen(context),
+										tooltip: 'パスワードを追加',
+										child: const Icon(Icons.add),
+									)
+									: null,
+							);
+						}
+					);
+				}
+			),
+		);
+	}
+}
