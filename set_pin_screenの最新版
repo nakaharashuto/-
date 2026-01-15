@@ -1,7 +1,9 @@
+// ファイルパス: lib/screens/set_pin_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/master_pin_provider.dart';
-import '../providers/auth_provider.dart';
+// import '../providers/auth_provider.dart';
 
 class SetPinScreen extends ConsumerStatefulWidget {
   const SetPinScreen({super.key});
@@ -13,7 +15,6 @@ class SetPinScreen extends ConsumerStatefulWidget {
 class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   final _pinController = TextEditingController();
   final _confirmController = TextEditingController();
-  // 💡 追加：質問と答えのコントローラー
   final _questionController = TextEditingController();
   final _answerController = TextEditingController();
   
@@ -24,8 +25,8 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   void dispose() {
     _pinController.dispose();
     _confirmController.dispose();
-    _questionController.dispose(); // 💡 追加
-    _answerController.dispose();   // 💡 追加
+    _questionController.dispose();
+    _answerController.dispose();
     super.dispose();
   }
 
@@ -34,8 +35,8 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
 
     final pin = _pinController.text;
     final confirmPin = _confirmController.text;
-    final question = _questionController.text; // 💡 追加
-    final answer = _answerController.text;     // 💡 追加
+    final question = _questionController.text;
+    final answer = _answerController.text;
 
     // バリデーション
     if (pin.length != 4) {
@@ -46,7 +47,6 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
       setState(() => _errorMessage = 'PINが一致しません。');
       return;
     }
-    // 💡 質問と答えが空でないかチェック
     if (question.isEmpty || answer.isEmpty) {
       setState(() => _errorMessage = '秘密の質問と答えを入力してください。');
       return;
@@ -58,20 +58,34 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     });
 
     try {
-      // 💡 修正：新しいメソッド setPinWithRecovery を呼び出す
+      // 💡 1. サーバー/ストレージへ保存 (マスターキーの生成/維持を含む)
       await ref.read(masterPinProvider.notifier).setPinWithRecovery(
         pin: pin,
         question: question,
         answer: answer,
       );
       
-      ref.read(authProvider.notifier).login();
-    } catch (e) {
-      setState(() => _errorMessage = '設定中にエラーが発生しました: $e');
-    }
+      // 💡 2. 成功通知を表示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('設定を保存しました。新しいPINでログインしてください。'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-    if (mounted) {
-      setState(() => _isLoading = false);
+        // 💡 3. ロック解除画面（AuthScreen）に戻る
+        // login() は呼ばず、ユーザーに再度PINを打ってもらう流れ
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = '設定中にエラーが発生しました: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -84,6 +98,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
         title: const Text('初期設定'),
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: Colors.white,
+        // 戻るボタンを自動で出す（AuthScreenからpushされた場合）
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -109,6 +124,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
                 decoration: const InputDecoration(
                   labelText: '新しいPIN (4桁)',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.password),
                 ),
               ),
               const SizedBox(height: 16),
@@ -121,18 +137,23 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
                 decoration: const InputDecoration(
                   labelText: 'PIN (確認用)',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.verified),
                 ),
               ),
               
-              const Divider(height: 48),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Divider(),
+              ),
 
-              // 💡 追加：秘密の質問入力
+              // 秘密の質問入力
               TextField(
                 controller: _questionController,
                 decoration: const InputDecoration(
                   labelText: '秘密の質問 (例: 最初のペットの名前は？)',
                   hintText: '忘れた時に表示される質問です',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.help_outline),
                 ),
               ),
               const SizedBox(height: 16),
@@ -141,10 +162,11 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
                 decoration: const InputDecoration(
                   labelText: '質問の答え',
                   border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.question_answer_outlined),
                 ),
               ),
               
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
 
               if (_errorMessage.isNotEmpty)
                 Padding(
@@ -160,10 +182,15 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
                 onPressed: _isLoading ? null : _setPin,
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : const Text('設定を保存して開始'),
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('設定を保存して開始', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           ),
