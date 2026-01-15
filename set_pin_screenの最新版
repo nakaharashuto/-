@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/master_pin_provider.dart';
-// import '../providers/auth_provider.dart';
 
 class SetPinScreen extends ConsumerStatefulWidget {
   const SetPinScreen({super.key});
@@ -17,37 +16,19 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   final _confirmController = TextEditingController();
   final _questionController = TextEditingController();
   final _answerController = TextEditingController();
-  
-  String _errorMessage = '';
   bool _isLoading = false;
+  String _errorMessage = '';
 
-  @override
-  void dispose() {
-    _pinController.dispose();
-    _confirmController.dispose();
-    _questionController.dispose();
-    _answerController.dispose();
-    super.dispose();
-  }
-
-  void _setPin() async {
-    if (_isLoading) return;
-
-    final pin = _pinController.text;
-    final confirmPin = _confirmController.text;
-    final question = _questionController.text;
-    final answer = _answerController.text;
-
-    // バリデーション
-    if (pin.length != 4) {
-      setState(() => _errorMessage = 'PINは4桁の数字で入力してください。');
+  Future<void> _handleSave() async {
+    if (_pinController.text.length != 4) {
+      setState(() => _errorMessage = 'PINは4桁で入力してください。');
       return;
     }
-    if (pin != confirmPin) {
-      setState(() => _errorMessage = 'PINが一致しません。');
+    if (_pinController.text != _confirmController.text) {
+      setState(() => _errorMessage = '確認用PINが一致しません。');
       return;
     }
-    if (question.isEmpty || answer.isEmpty) {
+    if (_questionController.text.isEmpty || _answerController.text.isEmpty) {
       setState(() => _errorMessage = '秘密の質問と答えを入力してください。');
       return;
     }
@@ -58,142 +39,92 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     });
 
     try {
-      // 💡 1. サーバー/ストレージへ保存 (マスターキーの生成/維持を含む)
       await ref.read(masterPinProvider.notifier).setPinWithRecovery(
-        pin: pin,
-        question: question,
-        answer: answer,
+        pin: _pinController.text,
+        question: _questionController.text,
+        answer: _answerController.text,
       );
-      
-      // 💡 2. 成功通知を表示
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('設定を保存しました。新しいPINでログインしてください。'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('設定を保存しました。')),
         );
 
-        // 💡 3. ロック解除画面（AuthScreen）に戻る
-        // login() は呼ばず、ユーザーに再度PINを打ってもらう流れ
-        Navigator.of(context).pop();
+        // 💡 秘密の質問（再設定）から遷移してきた場合は画面を閉じる
+        // 初期設定の場合は下に画面がないので何も起きませんが、
+        // AuthWrapper が自動的に AuthScreen に差し替えてくれます。
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _errorMessage = '設定中にエラーが発生しました: $e');
-      }
+      if (mounted) setState(() => _errorMessage = 'エラー: $e');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  void dispose() {
+    _pinController.dispose();
+    _confirmController.dispose();
+    _questionController.dispose();
+    _answerController.dispose();
+    super.dispose();
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('初期設定'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: Colors.white,
-        // 戻るボタンを自動で出す（AuthScreenからpushされた場合）
+        title: const Text('PIN設定'),
+        // 再設定時のみ戻るボタンを表示
+        automaticallyImplyLeading: Navigator.of(context).canPop(),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Text(
-                'マスターPINと、忘れた時のための\n秘密の質問を設定してください。',
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-
-              // PIN入力
-              TextField(
-                controller: _pinController,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(
-                  labelText: '新しいPIN (4桁)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.password),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmController,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(
-                  labelText: 'PIN (確認用)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.verified),
-                ),
-              ),
-              
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Divider(),
-              ),
-
-              // 秘密の質問入力
-              TextField(
-                controller: _questionController,
-                decoration: const InputDecoration(
-                  labelText: '秘密の質問 (例: 最初のペットの名前は？)',
-                  hintText: '忘れた時に表示される質問です',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.help_outline),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _answerController,
-                decoration: const InputDecoration(
-                  labelText: '質問の答え',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.question_answer_outlined),
-                ),
-              ),
-              
-              const SizedBox(height: 32),
-
-              if (_errorMessage.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    _errorMessage,
-                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-
-              ElevatedButton(
-                onPressed: _isLoading ? null : _setPin,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('設定を保存して開始', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('新しいPINと秘密の質問を設定してください。', textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _pinController,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '新しいPIN (4桁)', border: OutlineInputBorder()),
+            ),
+            TextField(
+              controller: _confirmController,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '確認用PIN', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 20),
+            const Divider(),
+            const Text('秘密の質問（忘れた際の復旧用）', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _questionController,
+              decoration: const InputDecoration(labelText: '質問 (例: 好きな食べ物は？)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _answerController,
+              decoration: const InputDecoration(labelText: '答え', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 30),
+            if (_errorMessage.isNotEmpty)
+              Text(_errorMessage, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+            const SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _isLoading ? null : _handleSave,
+              style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+              child: _isLoading ? const CircularProgressIndicator() : const Text('設定を保存して開始'),
+            ),
+          ],
         ),
       ),
     );
