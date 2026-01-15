@@ -1,15 +1,21 @@
+// ファイルパス: lib/providers/master_pin_provider.dart
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
+import 'dart:convert';
+import 'dart:math';
 
 class MasterPinState {
   final String? masterPin;
-  final String? recoveryQuestion; // 💡 追加
-  final String? recoveryAnswer;   // 💡 追加
+  final String? masterKey;      // 💡 追加：データを暗号化するための不変の鍵
+  final String? recoveryQuestion; 
+  final String? recoveryAnswer;   
   final bool isPinSet;
 
   MasterPinState({
     this.masterPin,
+    this.masterKey,
     this.recoveryQuestion,
     this.recoveryAnswer,
   }) : isPinSet = masterPin != null;
@@ -17,26 +23,29 @@ class MasterPinState {
 
 class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
   static const _pinKey = 'master_pin_secure';
-  static const _questionKey = 'recovery_question_secure'; // 💡 追加
-  static const _answerKey = 'recovery_answer_secure';     // 💡 追加
+  static const _masterKeyStorage = 'master_key_actual'; // 💡 内部保存用のキー名
+  static const _questionKey = 'recovery_question_secure'; 
+  static const _answerKey = 'recovery_answer_secure'; 
   
   final _secureStorage = const FlutterSecureStorage();
 
   @override
   Future<MasterPinState> build() async {
-    // 💡 全てのデータを読み込む
+    // 全てのデータを読み込む
     final pin = await _secureStorage.read(key: _pinKey);
+    final masterKey = await _secureStorage.read(key: _masterKeyStorage);
     final question = await _secureStorage.read(key: _questionKey);
     final answer = await _secureStorage.read(key: _answerKey);
 
     return MasterPinState(
       masterPin: pin,
+      masterKey: masterKey,
       recoveryQuestion: question,
       recoveryAnswer: answer,
     );
   }
   
-  // 💡 PIN、質問、答えをセットで保存するように変更
+  // 💡 PIN、質問、答えを設定。その際、マスターキーがなければ生成・保存する
   Future<void> setPinWithRecovery({
     required String pin,
     required String question,
@@ -44,23 +53,36 @@ class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
   }) async {
     if (state.isLoading) return; 
     
+    // 💡 既存のマスターキーを確認。なければ新規作成
+    String? currentKey = state.value?.masterKey;
+    if (currentKey == null) {
+      final random = Random.secure();
+      final values = List<int>.generate(32, (i) => random.nextInt(256));
+      currentKey = base64Url.encode(values);
+      await _secureStorage.write(key: _masterKeyStorage, value: currentKey);
+      debugPrint('MasterPinNotifier: 新しいマスターキーが生成されました。');
+    }
+
+    // 各種設定を保存
     await _secureStorage.write(key: _pinKey, value: pin);
     await _secureStorage.write(key: _questionKey, value: question);
     await _secureStorage.write(key: _answerKey, value: answer);
     
     state = AsyncData(MasterPinState(
       masterPin: pin,
+      masterKey: currentKey,
       recoveryQuestion: question,
       recoveryAnswer: answer,
     ));
-    debugPrint('MasterPinNotifier: PINと秘密の質問が保存されました。');
+    debugPrint('MasterPinNotifier: PINと復旧設定が更新されました。');
   }
 
-  // 💡 全データを削除（初期化用）
+  // 💡 全データを削除（工場出荷状態にする場合のみ使用）
   Future<void> clearAll() async {
     if (state.isLoading) return;
-    await _secureStorage.deleteAll(); // 全てのキーを削除
+    await _secureStorage.deleteAll(); 
     state = AsyncData(MasterPinState(masterPin: null));
+    debugPrint('MasterPinNotifier: 全データが消去されました。');
   }
 
   bool checkCurrentPin(String pin) {
@@ -68,10 +90,8 @@ class MasterPinNotifier extends AsyncNotifier<MasterPinState> {
     return currentPinState?.masterPin == pin;
   }
 
-  // 💡 秘密の質問の答えが合っているかチェックするメソッド
   bool checkRecoveryAnswer(String answer) {
     final currentPinState = state.value;
-    // 空白や大文字小文字の差を無視して比較するとユーザーに優しいです
     return currentPinState?.recoveryAnswer?.trim() == answer.trim();
   }
 }
