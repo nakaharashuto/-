@@ -118,11 +118,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
+  // ✅ 修正ポイント: Notifierを事前に取得する
   Future<void> _handleSuccess() async {
+    // awaitの前にnotifierを確保しておくことで、画面破棄後のStateErrorを防ぐ
+    final authNotifier = ref.read(authProvider.notifier);
+
     await _storage.delete(key: _keyAttempts);
     await _storage.delete(key: _keyLockUntil);
+    
     // authProviderを介してログイン状態を更新
-    ref.read(authProvider.notifier).login();
+    authNotifier.login();
   }
 
   Future<void> _checkBiometrics() async {
@@ -172,11 +177,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     if (authNotifier.tryPin(pin, masterPin)) {
       await _handleSuccess();
+      // ✅ 成功時はこの画面が消えるため、ここで処理を終了させる
+      return;
     } else {
       await _handleFailure();
       _pinController.clear();
     }
 
+    // 失敗時のみ、まだ画面があればローディングを解除
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -192,12 +200,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final success = await ref.read(authProvider.notifier).authenticateWithBiometrics();
 
     if (!success) {
-      setState(() => _errorMessage = '認証に失敗しました。PINで試してください。');
+      if (mounted) {
+        setState(() {
+          _errorMessage = '認証に失敗しました。PINで試してください。';
+          _isLoading = false;
+        });
+      }
     } else {
       await _handleSuccess();
+      // 成功時はリターン（この画面は破棄されるため）
+      return;
     }
-
-    if (mounted) setState(() => _isLoading = false);
   }
 
   void _showRecoveryDialog() {
