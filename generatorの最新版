@@ -1,0 +1,135 @@
+// ファイルパス: lib/services/generator.dart
+// 役割: 強力なランダムパスワードを生成する静的サービス および データ暗号化/復号化サービス
+
+import 'dart:math';
+import 'dart:convert';
+// ⚠️ 修正: ProviderRef / Ref / WidgetRef ではなく、Riverpodで汎用的に利用可能な型としてRefをインポート
+import 'package:flutter_riverpod/flutter_riverpod.dart'; 
+import 'package:flutter/foundation.dart'; // debugPrintのため
+import '../providers/master_pin_provider.dart'; 
+
+class PasswordGeneratorService {
+	// --- パスワード生成ロジック (省略) ---
+	static const String _lowercase = 'abcdefghijklmnopqrstuvwxyz';
+	static const String _uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+	static const String _numbers = '0123456789';
+	static const String _symbols = '!@#\$%^&*()-_+=<>?/{}[]~';
+
+	static String generatePassword({
+		required int length,
+		required bool useUpper,
+		required bool useNumbers,
+		required bool useSymbols,
+	}) {
+		if (length < 8) {
+			length = 8;
+		}
+
+		String charSet = _lowercase;
+		String mandatoryChars = '';
+
+		if (useUpper) {
+			charSet += _uppercase;
+			mandatoryChars += _getRandomChar(_uppercase);
+		}
+		if (useNumbers) {
+			charSet += _numbers;
+			mandatoryChars += _getRandomChar(_numbers);
+		}
+		if (useSymbols) {
+			charSet += _symbols;
+			mandatoryChars += _getRandomChar(_symbols);
+		}
+
+		String password = mandatoryChars;
+
+		final remainingLength = length - mandatoryChars.length;
+		final random = Random.secure();
+		
+		for (int i = 0; i < remainingLength; i++) {
+			password += charSet[random.nextInt(charSet.length)];
+		}
+
+		return _shuffle(password);
+	}
+
+	static String _getRandomChar(String set) {
+		if (set.isEmpty) return '';
+		final random = Random.secure();
+		return set[random.nextInt(set.length)];
+	}
+
+	static String _shuffle(String text) {
+		final List<String> characters = text.split('');
+		final random = Random.secure();
+		
+		for (int i = characters.length - 1; i > 0; i--) {
+			int j = random.nextInt(i + 1);
+			final temp = characters[i];
+			characters[i] = characters[j];
+			characters[j] = temp;
+		}
+		return characters.join();
+	}
+	// --- パスワード生成ロジック 終了 ---
+
+
+	// --- データ暗号化/復号化ロジック (簡易XOR暗号) ---
+	
+	// ⚠️ 修正: WidgetRef から Ref に変更
+	static String? _getEncryptionKey(Ref ref) {
+		// AsyncNotifierProviderの.valueを読み込む
+		final masterPinState = ref.watch(masterPinProvider).value; 
+		return masterPinState?.masterPin;
+	}
+
+	// 簡易XOR暗号化関数 (変更なし)
+	static String _xorEncrypt(String data, String key) {
+		final dataBytes = utf8.encode(data);
+		final keyBytes = utf8.encode(key);
+		final encryptedBytes = <int>[];
+
+		for (int i = 0; i < dataBytes.length; i++) {
+			encryptedBytes.add(dataBytes[i] ^ keyBytes[i % keyBytes.length]);
+		}
+
+		return base64Encode(encryptedBytes);
+	}
+
+	// 簡易XOR復号化関数
+	static String _xorDecrypt(String encryptedData, String key) {
+		try {
+			final encryptedBytes = base64Decode(encryptedData);
+			final keyBytes = utf8.encode(key);
+			final decryptedBytes = <int>[];
+
+			for (int i = 0; i < encryptedBytes.length; i++) {
+				decryptedBytes.add(encryptedBytes[i] ^ keyBytes[i % keyBytes.length]);
+			}
+			
+			return utf8.decode(decryptedBytes);
+		} catch (e) {
+			// ⚠️ 修正: print を debugPrint に置き換え
+			debugPrint('Decryption Error: $e'); 
+			return '';
+		}
+	}
+	
+	/// データをマスターPINを使用して暗号化します。
+	// ⚠️ 修正: WidgetRef から Ref に変更
+	static String? encryptData(Ref ref, String data) {
+		final key = _getEncryptionKey(ref);
+		if (key == null) return null;
+		
+		return _xorEncrypt(data, key);
+	}
+
+	/// 暗号化されたデータをマスターPINを使用して復号化します。
+	// ⚠️ 修正: WidgetRef から Ref に変更
+	static String decryptData(Ref ref, String encryptedData) {
+		final key = _getEncryptionKey(ref);
+		if (key == null) return '';
+		
+		return _xorDecrypt(encryptedData, key);
+	}
+}
