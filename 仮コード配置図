@@ -1,8 +1,2 @@
-ギガファイル便のURL
-https://xgf.nu/SgwRD
-↑のうちmaster_pin_provider,auth_screen,set_pin_screen,settings_screenを最新版と書かれているものに置き換えてください
-↑に加え、password_detail_screen,password_list_screen,edit_screenも最新版に置き換え、新たにlib/widgets/pin_reauth_dialog.dartというファイルを作って最新版を貼り付けてください
-setup_screenは消しても大丈夫です
-
 https://xgf.nu/9RNFe
-↑最新版
+↑最新版のzipをダウンロードするか各ファイルの最新版を貼り付ける
