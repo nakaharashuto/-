@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/master_pin_provider.dart';
 import '../providers/auth_provider.dart';
+import '../main.dart'; 
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -17,7 +18,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _currentPinController = TextEditingController();
   final _newPinController = TextEditingController();
   final _confirmNewPinController = TextEditingController();
-  // 💡 追加: 秘密の質問と答えのコントローラー
   final _questionController = TextEditingController();
   final _answerController = TextEditingController();
   
@@ -50,7 +50,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    // 💡 追加: 質問と答えのバリデーション
     if (question.isEmpty || answer.isEmpty) {
       setState(() => _pinMessage = '秘密の質問と答えを入力してください。');
       return;
@@ -71,21 +70,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    // 💡 修正: setPinWithRecovery を使用して全てのデータを更新
     await notifier.setPinWithRecovery(
       pin: newPin,
       question: question,
       answer: answer,
     ); 
 
-    setState(() {
-      _pinMessage = 'PINと秘密の質問が正常に更新されました！';
-      _currentPinController.clear();
-      _newPinController.clear();
-      _confirmNewPinController.clear();
-      _questionController.clear();
-      _answerController.clear();
-    });
+    if (mounted) {
+      setState(() {
+        _pinMessage = 'PINと秘密の質問が正常に更新されました！';
+        _currentPinController.clear();
+        _newPinController.clear();
+        _confirmNewPinController.clear();
+        _questionController.clear();
+        _answerController.clear();
+      });
+    }
   }
 
   void _logout() {
@@ -94,16 +94,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showDeleteConfirmationDialog() {
-    final masterPinNotifier = ref.read(masterPinProvider.notifier);
-    final authNotifier = ref.read(authProvider.notifier);
-
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('本当にマスターPINを削除しますか？'),
           content: const Text(
-            'この操作は取り消せません。\n\nPINと秘密の質問が削除され、次回起動時から認証がスキップされます。続行しますか？',
+            'この操作は取り消せません。\n\nPINと秘密の質問が削除され、初期設定画面に戻ります。',
             style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
           ),
           actions: <Widget>[
@@ -113,23 +111,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.of(dialogContext).pop(); 
+                // 💡 非同期処理の前にナビゲーターを取得しておく
+                final navigator = Navigator.of(context);
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+
                 try {
-                  // 💡 修正: clearAll メソッドを呼び出す
-                  await masterPinNotifier.clearAll();
+                  await ref.read(masterPinProvider.notifier).clearAll();
+                  ref.read(authProvider.notifier).lockApp();
+
+                  // 💡 ダイアログを閉じる（dialogContextを使用）
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
 
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       const SnackBar(content: Text('全ての認証設定が削除されました。')),
                     );
-                  }
-                  authNotifier.lockApp();
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('削除中にエラーが発生しました: $e')),
+
+                    // 💡 ルート画面（AuthWrapper）に戻す
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const AuthWrapper()),
+                      (route) => false,
                     );
                   }
+                } catch (e) {
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(content: Text('削除中にエラーが発生しました: $e')),
+                  );
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -173,7 +185,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 16),
                 
-                // PIN入力セクション
                 TextField(
                   controller: _currentPinController,
                   obscureText: true,
@@ -203,7 +214,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Divider(),
                 ),
 
-                // 💡 追加: 秘密の質問入力セクション
                 TextField(
                   controller: _questionController,
                   decoration: const InputDecoration(
