@@ -1,0 +1,98 @@
+// ファイルパス: lib/providers/auth_provider.dart
+// 役割: 認証状態（ロック/解除）の管理と、一定時間操作がない場合の自動ロック機能を提供
+
+import 'dart:async'; 
+import 'package:flutter/widgets.dart'; 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+// ⚠️ 修正: local_authの直接利用をやめたため、このインポートは不要
+// import 'package:local_auth/local_auth.dart'; 
+import '../services/auth_service.dart'; // 💡 AuthServiceをインポート
+
+// 💡 AuthService の Provider を追加（AuthScreenで使用されていますが、念のためここに定義）
+final authServiceProvider = Provider((ref) => AuthService());
+
+
+class AuthNotifier extends StateNotifier<bool> {
+  // 💡 修正: AuthService のインスタンスを保持する
+  final AuthService _authService;
+  
+  Timer? _lockTimer;
+  static const Duration _lockDelay = Duration(seconds: 30); 
+    
+  late final AppLifecycleListener _listener;
+
+  // 💡 修正: コンストラクタでAuthServiceを受け取る
+  AuthNotifier(this._authService) : super(false) { 
+    _listener = AppLifecycleListener(
+      onStateChange: (AppLifecycleState state) {
+        _handleLifecycleChange(state);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    _lockTimer?.cancel();
+    super.dispose();
+  }
+  
+  void _handleLifecycleChange(AppLifecycleState state) {
+    if (this.state == true) {
+      if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+        debugPrint('App in background/inactive. Starting auto-lock timer.');
+        _lockTimer = Timer(_lockDelay, () {
+          lockApp();
+          debugPrint('Auto-lock triggered.');
+        });
+      } else if (state == AppLifecycleState.resumed) {
+        if (_lockTimer?.isActive == true) {
+          _lockTimer?.cancel();
+          debugPrint('App resumed. Auto-lock timer canceled.');
+        }
+      }
+    }
+  }
+  
+  // --- Auth Logic ---
+
+  void login() {
+    _lockTimer?.cancel();
+    state = true;
+  }
+
+  void lockApp() {
+    _lockTimer?.cancel();
+    state = false;
+  }
+
+  bool tryPin(String pin, String masterPin) {
+    if (pin == masterPin) {
+      login();
+      return true;
+    }
+    return false;
+  }
+
+  // 💡 修正: ロジックを AuthService に移譲
+  Future<bool> authenticateWithBiometrics() async {
+    // サービスの認証メソッドを呼び出す
+    final didAuthenticate = await _authService.authenticate();
+    
+    if (didAuthenticate) {
+      login();
+      debugPrint('生体認証: 成功');
+    }
+    
+    // 成功・失敗の結果をそのまま返す
+    return didAuthenticate;
+  }
+}
+
+// 💡 修正: Providerの定義を変更し、AuthServiceをAuthNotifierに渡す
+final authProvider = StateNotifierProvider<AuthNotifier, bool>((ref) {
+  // サービスプロバイダーからインスタンスを取得
+  final authService = ref.watch(authServiceProvider); 
+  // サービスをコンストラクタに渡してAuthNotifierを作成
+  return AuthNotifier(authService); 
+});
