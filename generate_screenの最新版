@@ -1,0 +1,279 @@
+// ファイルパス: lib/screens/generate_screen.dart
+// 役割: パスワード生成の設定と実行、結果表示、クリップボードへのコピー、およびパスワードリストへの保存
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/generator.dart'; // PasswordGeneratorService の定義に必要
+import 'add_password_screen.dart'; // クラス名: PasswordFormScreen
+
+// ===================================================
+// Riverpod State Notifiers and Providers
+// ===================================================
+
+class GenerationSettings {
+	final int length;
+	final bool useUpper;
+	final bool useNumbers;
+	final bool useSymbols;
+
+	GenerationSettings({
+		required this.length,
+		required this.useUpper,
+		required this.useNumbers,
+		required this.useSymbols,
+	});
+
+	GenerationSettings copyWith({
+		int? length,
+		bool? useUpper,
+		bool? useNumbers,
+		bool? useSymbols,
+	}) {
+		return GenerationSettings(
+			length: length ?? this.length,
+			useUpper: useUpper ?? this.useUpper,
+			useNumbers: useNumbers ?? this.useNumbers,
+			useSymbols: useSymbols ?? this.useSymbols,
+		);
+	}
+}
+
+class GenerationSettingsNotifier extends StateNotifier<GenerationSettings> {
+	GenerationSettingsNotifier()
+			: super(
+				GenerationSettings(
+					length: 16,
+					useUpper: true,
+					useNumbers: true,
+					useSymbols: true,
+				),
+			);
+	
+	void setLength(int length) => state = state.copyWith(length: length);
+	void setUseUpper(bool value) => state = state.copyWith(useUpper: value);
+	void setUseNumbers(bool value) => state = state.copyWith(useNumbers: value);
+	void setUseSymbols(bool value) => state = state.copyWith(useSymbols: value);
+}
+
+final generationSettingsProvider = StateNotifierProvider<GenerationSettingsNotifier, GenerationSettings>(
+	(ref) => GenerationSettingsNotifier(),
+);
+
+final generatedPasswordProvider = StateProvider<String>((ref) => '');
+
+// ===================================================
+// Screen Widget
+// ===================================================
+
+class GenerateScreen extends ConsumerWidget {
+	const GenerateScreen({super.key});
+
+	@override
+	Widget build(BuildContext context, WidgetRef ref) {
+		final settings = ref.watch(generationSettingsProvider);
+		final generatedPassword = ref.watch(generatedPasswordProvider);
+		final settingsNotifier = ref.read(generationSettingsProvider.notifier);
+
+		// --- ロジック関数 ---
+		void generatePassword() {
+			// PasswordGeneratorService は ../services/generator.dart に依存
+			final newPassword = PasswordGeneratorService.generatePassword(
+				length: settings.length,
+				useUpper: settings.useUpper,
+				useNumbers: settings.useNumbers,
+				useSymbols: settings.useSymbols,
+				// useLower: true は削除済み（サービス側で自動的に含まれることを想定）
+			);
+			ref.read(generatedPasswordProvider.notifier).state = newPassword;
+		}
+
+		void copyToClipboard(String text) {
+			Clipboard.setData(ClipboardData(text: text));
+			ScaffoldMessenger.of(context).showSnackBar(
+				const SnackBar(content: Text('パスワードをクリップボードにコピーしました。')),
+			);
+		}
+
+		// 💡 修正: navigateToSaveScreen を新しい引数に合わせて修正
+		void navigateToSaveScreen(String password) {
+			Navigator.of(context).push(
+				MaterialPageRoute(
+					builder: (ctx) => PasswordFormScreen(
+						// 1. 修正: entry には null を渡し、新規作成モードを強制する
+						entry: null, 
+						// 2. 修正: 自動生成されたパスワードを新しい専用引数で渡す
+						initialGeneratedPassword: password, 
+					),
+				),
+			);
+			// 遷移後、生成されたパスワードをクリア
+			ref.read(generatedPasswordProvider.notifier).state = '';
+		}
+
+		// --- UI レイアウト ---
+		return SingleChildScrollView(
+			padding: const EdgeInsets.all(16.0),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.stretch,
+				children: <Widget>[
+					
+					// ===================================================
+					// 1. ⚙️ 生成設定エリア (最上部)
+					// ===================================================
+					Text(
+						'生成設定',
+						style: Theme.of(context).textTheme.headlineSmall,
+					),
+					const Divider(height: 16),
+
+					// 長さスライダー
+					Card(
+						child: Padding(
+							padding: const EdgeInsets.all(16.0),
+							child: Column(
+								crossAxisAlignment: CrossAxisAlignment.start,
+								children: [
+									Text('パスワードの長さ: ${settings.length} 文字', style: Theme.of(context).textTheme.titleMedium),
+									Slider(
+										value: settings.length.toDouble(),
+										min: 8,
+										max: 32,
+										divisions: 24,
+										label: settings.length.toString(),
+										onChanged: (double value) {
+											settingsNotifier.setLength(value.round());
+										},
+									),
+								],
+							),
+						),
+					),
+					
+					const SizedBox(height: 16),
+
+					// 文字種別設定
+					Card(
+						child: Column(
+							children: [
+								SwitchListTile(
+									title: const Text('大文字 (A-Z)'),
+									value: settings.useUpper,
+									onChanged: (bool value) {
+										settingsNotifier.setUseUpper(value);
+									},
+								),
+								SwitchListTile(
+									title: const Text('数字 (0-9)'),
+									value: settings.useNumbers,
+									onChanged: (bool value) {
+										settingsNotifier.setUseNumbers(value);
+									},
+								),
+								SwitchListTile(
+									title: const Text('記号 (!@#\$...)'), 
+									value: settings.useSymbols, 
+									onChanged: (bool value) {
+										settingsNotifier.setUseSymbols(value);
+									},
+								),
+								// 小文字は常に有効
+								const ListTile(
+									title: Text('小文字 (a-z)'),
+									trailing: Icon(Icons.check_circle, color: Colors.green),
+									subtitle: Text('セキュリティのため常に含まれます'),
+								),
+							],
+						),
+					),
+					
+					const SizedBox(height: 32),
+					
+					// ===================================================
+					// 2. 🔑 生成されたパスワード表示エリア (中央部)
+					// ===================================================
+					Card(
+						elevation: 4,
+						shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+						child: Padding(
+							padding: const EdgeInsets.all(20.0),
+							child: Column(
+								crossAxisAlignment: CrossAxisAlignment.stretch,
+								children: [
+									Text(
+										'生成されたパスワード',
+										style: Theme.of(context).textTheme.titleMedium,
+									),
+									const SizedBox(height: 12),
+									// パスワード表示エリア
+									Container(
+										padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+										decoration: BoxDecoration(
+											color: Theme.of(context).colorScheme.primary.withAlpha(50), 
+											borderRadius: BorderRadius.circular(8),
+											border: Border.all(color: Theme.of(context).colorScheme.primary.withAlpha(100)),
+										),
+										child: SelectableText(
+											generatedPassword.isEmpty ? '設定を確認し、「生成」ボタンを押してください。' : generatedPassword,
+											style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+											textAlign: TextAlign.center,
+										),
+									),
+									const SizedBox(height: 16),
+									
+									// 保存ボタン
+									if (generatedPassword.isNotEmpty)
+										Padding(
+											padding: const EdgeInsets.only(bottom: 8.0),
+											child: ElevatedButton.icon(
+												onPressed: () => navigateToSaveScreen(generatedPassword),
+												icon: const Icon(Icons.add_circle_outline),
+												label: const Text('パスワードとして保存', style: TextStyle(fontSize: 16)),
+												style: ElevatedButton.styleFrom(
+													backgroundColor: Theme.of(context).colorScheme.tertiary,
+													foregroundColor: Theme.of(context).colorScheme.onTertiary,
+													minimumSize: const Size(double.infinity, 45),
+												),
+											),
+										),
+									
+									// コピーボタン
+									ElevatedButton.icon(
+										onPressed: generatedPassword.isEmpty ? null : () => copyToClipboard(generatedPassword),
+										icon: const Icon(Icons.copy),
+										label: const Text('クリップボードにコピー'),
+										style: ElevatedButton.styleFrom(
+											backgroundColor: generatedPassword.isEmpty 
+												? Colors.grey 
+												: Theme.of(context).colorScheme.secondary,
+											foregroundColor: Colors.white,
+											minimumSize: const Size(double.infinity, 45),
+										),
+									),
+								],
+							),
+						),
+					),
+					
+					const SizedBox(height: 32),
+					
+					// ===================================================
+					// 3. 🚀 生成ボタン (最下部)
+					// ===================================================
+					ElevatedButton.icon(
+						onPressed: generatePassword,
+						icon: const Icon(Icons.security),
+						label: const Text('強力なパスワードを生成'),
+						style: ElevatedButton.styleFrom(
+							backgroundColor: Theme.of(context).colorScheme.tertiary,
+							foregroundColor: Theme.of(context).colorScheme.onTertiary,
+							minimumSize: const Size(double.infinity, 60),
+							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+							textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+						),
+					),
+				],
+			),
+		);
+	}
+}
