@@ -1,0 +1,17 @@
+pubspec.yaml　をコピペしてください
+
+VS Codeの左側の何もないところを右クリックし、「新しいフォルダー」を選択します。
+
+名前を assets にします。
+
+作成した assets フォルダを右クリックし、さらに「新しいフォルダー」で icon を作成します。
+
+用意しているアイコン画像（PNG形式）の名前を app_icon.png に変更します。(画像は貼ってある　app_icon.pngを使ってください)
+
+その画像を、先ほど作った assets/icon フォルダの中にドラッグ＆ドロップで入れます。
+
+dart run flutter_launcher_icons
+
+↑このコマンドを実行したら完了です
+
+アプリの名前を変更したい場合は　android　→　app → scr → main → AndroidManifest.xml で上の方にある　 android:label　で変更してください
