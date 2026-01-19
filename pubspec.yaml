@@ -1,0 +1,49 @@
+name: flutter_application_3  
+description: A secure password manager app prototype using Flutter and Riverpod.
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  encrypt: ^5.0.1
+  
+  flutter_riverpod: ^2.5.1
+  
+  local_auth: ^2.1.8
+  
+  collection: ^1.18.1 
+
+  flutter_secure_storage: ^9.0.0 
+  
+  uuid: ^4.3.1 
+  #この下の４つ追加した
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1
+  path_provider: ^2.1.1
+  provider: ^6.1.5+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  #この下の３つを追加した
+  flutter_lints: ^3.0.0
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.13
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  # Android 8.0以降のアダプティブアイコンに対応する場合（任意）
+  # adaptive_icon_background: "#ffffff" # 背景色
+  # adaptive_icon_foreground: "assets/icon/app_icon_foreground.png" # 前景画像
